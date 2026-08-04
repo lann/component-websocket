@@ -1,0 +1,11 @@
+{
+  "name": "@lann/websocket-jco",
+  "version": "0.1.0",
+  "description": "Browser-first host implementation of lann:websocket over the standard WebSocket API",
+  "type": "module",
+  "main": "websocket.js",
+  "exports": {
+    ".": "./websocket.js"
+  },
+  "license": "MIT OR Apache-2.0"
+}

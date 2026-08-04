@@ -1,0 +1,14 @@
+package demo:websocket-echo;
+
+/// The demo's exported entry point, called by the host runners.
+interface demo {
+    /// Connect to the WebSocket echo server at `url`, round-trip `count`
+    /// messages, close cleanly, and return how many messages came back
+    /// intact. Any failure is rendered as a human-readable string.
+    run: async func(url: string, count: u32) -> result<u32, string>;
+}
+
+world websocket-echo-demo {
+    import lann:websocket/connections@0.1.0;
+    export demo;
+}

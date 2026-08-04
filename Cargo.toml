@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "rust/wasmtime",
+    "conformance/server",
+    "conformance/guest",
+    "conformance/adapters/common",
+    "conformance/adapters/wasmtime",
+    "conformance/runner",
+    "examples/echo-demo",
+    "examples/wasmtime-demo",
+]
+# The native (host-target) crates: bare `cargo clippy` / `cargo test` cover
+# exactly this set. The wasm-only crates (conformance/guest, echo-demo) build
+# for their wasm targets through the justfile recipes.
+default-members = [
+    "rust/wasmtime",
+    "conformance/server",
+    "conformance/adapters/common",
+    "conformance/adapters/wasmtime",
+    "conformance/runner",
+    "examples/wasmtime-demo",
+]
+
+[workspace.dependencies]
+anyhow = "1"
+bytes = "1"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = "1"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+toml = "0.8"
+tungstenite = "0.28"
+wasmtime = { version = "47", features = [
+    "component-model",
+    "component-model-async",
+    "async",
+    "runtime",
+] }
+wit-bindgen = "0.59"

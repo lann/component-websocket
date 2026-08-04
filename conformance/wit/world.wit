@@ -1,0 +1,47 @@
+package conformance:suite@0.1.0;
+
+/// The control surface adapters drive: the guest lists its corpus and runs
+/// one test at a time to a WIT-observable outcome.
+interface runner {
+    /// One corpus entry, mirroring `conformance/tests.toml`.
+    record test-descriptor {
+        /// The stable test id.
+        id: string,
+        /// Grouping tags a target manifest may mark unsupported.
+        tags: list<string>,
+    }
+
+    /// Per-run configuration supplied by the adapter.
+    record test-config {
+        /// The `ws:` base URL of the suite echo server (no trailing slash).
+        server-url: string,
+        /// A syntactically valid `ws:` URL whose connect attempt must fail
+        /// (a closed port on loopback).
+        unreachable-url: string,
+        /// Message count for count-parameterized tests.
+        message-count: u32,
+        /// Payload size for size-parameterized tests.
+        message-size: u32,
+    }
+
+    /// The outcome of one test run.
+    variant test-result {
+        /// Every assertion held.
+        pass,
+        /// An assertion failed; the string says which.
+        fail(string),
+        /// The test does not apply; the string says why.
+        skipped(string),
+    }
+
+    /// The corpus, in registry order.
+    list-tests: func() -> list<test-descriptor>;
+
+    /// Run one test to completion.
+    run-test: async func(test-id: string, config: test-config) -> test-result;
+}
+
+world conformance {
+    import lann:websocket/connections@0.1.0;
+    export runner;
+}

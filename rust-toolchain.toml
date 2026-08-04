@@ -1,0 +1,10 @@
+# Pinned so builds are reproducible across contributors and CI. Bump this
+# deliberately rather than tracking floating `stable`.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]
+# wasm32-unknown-unknown: the conformance guest and example guests, which
+#   import/export only custom WIT (componentized with `wasm-tools component
+#   new`).
+# wasm32-wasip2: reserved for the in-guest provider (not yet built).
+targets = ["wasm32-unknown-unknown", "wasm32-wasip2"]

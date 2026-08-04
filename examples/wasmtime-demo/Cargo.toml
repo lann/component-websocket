@@ -1,0 +1,13 @@
+[package]
+name = "wasmtime-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native host runner for the echo-demo component: Wasmtime + wasmtime-websocket against an in-process echo server"
+
+[dependencies]
+anyhow = { workspace = true }
+conformance-echod = { path = "../../conformance/server" }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wasmtime = { workspace = true }
+wasmtime-websocket = { path = "../../rust/wasmtime" }

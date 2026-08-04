@@ -1,0 +1,8 @@
+package wasmtime:websocket-host;
+
+// This world exists solely so `bindgen!` can generate the `Host` traits and
+// per-interface `add_to_linker` helpers for the interfaces this crate
+// implements.
+world imports {
+    import lann:websocket/connections@0.1.0;
+}

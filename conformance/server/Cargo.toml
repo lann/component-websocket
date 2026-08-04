@@ -1,0 +1,23 @@
+[package]
+name = "conformance-echod"
+version = "0.1.0"
+edition = "2021"
+description = "Suite-owned WebSocket echo/reference server for the conformance suite"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tokio = { workspace = true, features = [
+    "macros",
+    "net",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "io-util",
+] }
+tokio-tungstenite = { workspace = true }

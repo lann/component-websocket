@@ -1,0 +1,1029 @@
+//! The shared conformance guest component.
+//!
+//! One wasm binary, run unchanged against every conformance target. It
+//! exports the `conformance:suite/runner` control surface the adapters drive
+//! and imports the shared `lann:websocket/connections` surface under test.
+//! Every test opens its own connection against the suite echo server
+//! (`conformance/server`), selecting the server behavior it needs through
+//! the URL modes documented in `conformance/server/PROTOCOL.md`.
+//!
+//! `list-tests` mirrors `conformance/tests.toml`. `run-test` runs one test
+//! to a WIT-observable outcome (`pass`/`fail`/`skipped`). Assertions target
+//! contract-observable behavior only — never diagnostic strings, timing, or
+//! implementation-specific detail the WIT leaves open.
+
+mod bindings {
+    wit_bindgen::generate!({
+        path: "../wit",
+        world: "conformance",
+        generate_all,
+    });
+}
+
+use bindings::exports::conformance::suite::runner::{
+    Guest, TestConfig, TestDescriptor, TestResult,
+};
+use bindings::lann::websocket::connections::Websocket;
+use bindings::lann::websocket::types::{Error, Message, MessageKind, WebsocketState};
+
+/// The corpus: `(id, tags)`, mirroring `conformance/tests.toml` (the
+/// adapters' `verify_corpus` gate diffs the two).
+const CORPUS: &[(&str, &[&str])] = &[
+    ("connect-basic", &["connect"]),
+    ("connect-invalid-url", &["connect", "errors"]),
+    ("connect-invalid-protocols", &["connect", "errors"]),
+    ("connect-refused", &["connect", "errors"]),
+    ("connect-rejected", &["connect", "errors"]),
+    ("connect-timeout", &["connect", "errors", "timeouts"]),
+    ("subprotocol-negotiated", &["connect", "subprotocol"]),
+    ("subprotocol-none-offered", &["connect", "subprotocol"]),
+    (
+        "subprotocol-unoffered-selected",
+        &["connect", "subprotocol", "errors"],
+    ),
+    (
+        "subprotocol-none-selected",
+        &["connect", "subprotocol", "errors"],
+    ),
+    ("echo-binary", &["messaging"]),
+    ("echo-text", &["messaging"]),
+    ("echo-text-unicode", &["messaging"]),
+    ("echo-empty", &["messaging"]),
+    ("echo-large", &["messaging"]),
+    ("message-boundaries", &["messaging"]),
+    ("binary-text-interleave", &["messaging"]),
+    ("concurrent-send-receive", &["messaging"]),
+    ("concurrent-receives", &["messaging"]),
+    ("close-local", &["close"]),
+    ("close-local-default", &["close"]),
+    ("close-local-idempotent", &["close"]),
+    ("close-invalid-code", &["close", "errors"]),
+    ("close-reason-too-long", &["close", "errors"]),
+    ("close-reason-without-code", &["close", "errors"]),
+    ("send-after-close", &["close", "errors"]),
+    ("receive-after-close", &["close", "errors"]),
+    ("close-remote", &["close"]),
+    ("close-remote-no-code", &["close"]),
+    ("close-abnormal", &["close"]),
+    ("receive-backlog-before-close", &["close", "flow-control"]),
+    ("close-handshake-timeout", &["close", "timeouts"]),
+    ("state-changes-lifecycle", &["lifecycle"]),
+    ("state-changes-take-once", &["lifecycle"]),
+    ("wait-closed-latched", &["lifecycle"]),
+    ("send-via-stream", &["streaming"]),
+    ("receive-via-stream", &["streaming"]),
+    ("receive-via-stream-once", &["streaming", "errors"]),
+    ("receive-via-stream-end-on-close", &["streaming", "close"]),
+    ("receive-buffer-overflow", &["flow-control", "errors"]),
+];
+
+/// The inbound-buffer bound adapters must configure while running this
+/// corpus, so `receive-buffer-overflow` can trigger it with a bounded flood.
+/// Mirrored by `conformance-common::CONFORMANCE_MAX_INBOUND_BUFFER_BYTES`.
+const ASSUMED_BUFFER_BOUND: u32 = 256 * 1024;
+
+struct Component;
+
+impl Guest for Component {
+    fn list_tests() -> Vec<TestDescriptor> {
+        CORPUS
+            .iter()
+            .map(|(id, tags)| TestDescriptor {
+                id: (*id).to_string(),
+                tags: tags.iter().map(|t| (*t).to_string()).collect(),
+            })
+            .collect()
+    }
+
+    async fn run_test(test_id: String, config: TestConfig) -> TestResult {
+        match run(&test_id, &config).await {
+            Ok(()) => TestResult::Pass,
+            Err(detail) => TestResult::Fail(detail),
+        }
+    }
+}
+
+bindings::export!(Component with_types_in bindings);
+
+/// A short, stable rendering of an error variant for failure details.
+/// Payload strings are included for humans; assertions never match them.
+fn describe(err: &Error) -> String {
+    match err {
+        Error::InvalidUrl(msg) => format!("invalid-url({msg})"),
+        Error::ConnectFailed(msg) => format!("connect-failed({msg})"),
+        Error::Closed => "closed".to_string(),
+        Error::ReceivingViaStream => "receiving-via-stream".to_string(),
+        Error::ReceiveBufferOverflow => "receive-buffer-overflow".to_string(),
+        Error::InvalidArgument(msg) => format!("invalid-argument({msg})"),
+        Error::Other(msg) => format!("other({msg})"),
+    }
+}
+
+/// Connect to a mode path on the suite server, mapping failure into a test
+/// detail.
+async fn connect(
+    config: &TestConfig,
+    path_query: &str,
+    protocols: &[&str],
+) -> Result<Websocket, String> {
+    let url = format!("{}{}", config.server_url, path_query);
+    let protocols: Vec<String> = protocols.iter().map(|p| p.to_string()).collect();
+    Websocket::connect(url, protocols)
+        .await
+        .map_err(|err| format!("connect {path_query}: {}", describe(&err)))
+}
+
+/// A deterministic, index-tagged payload of `size` bytes (minimum 4).
+fn make_payload(index: u32, size: u32) -> Vec<u8> {
+    let size = size.max(4) as usize;
+    let mut payload = vec![0u8; size];
+    payload[..4].copy_from_slice(&index.to_le_bytes());
+    for (offset, byte) in payload.iter_mut().enumerate().skip(4) {
+        *byte = ((index as usize + offset) % 256) as u8;
+    }
+    payload
+}
+
+/// The payload `conformance/server`'s burst modes send for message `index`.
+fn burst_payload(index: u32, size: u32) -> Vec<u8> {
+    (0..size).map(|i| ((index + i) % 256) as u8).collect()
+}
+
+async fn send(ws: &Websocket, message: Message) -> Result<(), String> {
+    ws.send(message)
+        .await
+        .map_err(|err| format!("send: {}", describe(&err)))
+}
+
+async fn receive(ws: &Websocket) -> Result<Message, String> {
+    ws.receive()
+        .await
+        .map_err(|err| format!("receive: {}", describe(&err)))
+}
+
+async fn receive_binary(ws: &Websocket) -> Result<Vec<u8>, String> {
+    match receive(ws).await? {
+        Message::Binary(bytes) => Ok(bytes),
+        Message::String(_) => Err("expected a binary message, got text".to_string()),
+    }
+}
+
+async fn send_sequence(ws: &Websocket, count: u32, size: u32) -> Result<(), String> {
+    for index in 0..count {
+        send(ws, Message::Binary(make_payload(index, size))).await?;
+    }
+    Ok(())
+}
+
+async fn recv_sequence(ws: &Websocket, count: u32) -> Result<Vec<Vec<u8>>, String> {
+    let mut received = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        received.push(receive_binary(ws).await?);
+    }
+    Ok(received)
+}
+
+/// Verify an echoed sequence arrived intact and in order.
+fn verify_sequence(received: &[Vec<u8>], count: u32, size: u32) -> Result<(), String> {
+    if received.len() != count as usize {
+        return Err(format!("expected {count} messages, got {}", received.len()));
+    }
+    for (index, bytes) in received.iter().enumerate() {
+        if bytes != &make_payload(index as u32, size) {
+            return Err(format!("message {index} corrupted or out of order"));
+        }
+    }
+    Ok(())
+}
+
+/// Read a state stream to its end, asserting the coalescing-watch contract:
+/// consecutive elements distinct, order monotonic, terminal `closed` last.
+/// Returns the observed states.
+async fn drain_state_stream(
+    mut stream: wit_bindgen::StreamReader<WebsocketState>,
+) -> Result<Vec<WebsocketState>, String> {
+    fn rank(state: WebsocketState) -> u8 {
+        match state {
+            WebsocketState::Open => 0,
+            WebsocketState::Closing => 1,
+            WebsocketState::Closed => 2,
+        }
+    }
+    let mut states: Vec<WebsocketState> = Vec::new();
+    loop {
+        let (status, batch) = stream.read(Vec::with_capacity(4)).await;
+        for state in batch {
+            if let Some(&last) = states.last() {
+                if last == state {
+                    return Err(format!("state {state:?} delivered twice in a row"));
+                }
+                if rank(state) < rank(last) {
+                    return Err(format!("state went backwards: {last:?} -> {state:?}"));
+                }
+                if last == WebsocketState::Closed {
+                    return Err(format!("state {state:?} delivered after terminal closed"));
+                }
+            }
+            states.push(state);
+        }
+        if matches!(
+            status,
+            wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+        ) {
+            break;
+        }
+    }
+    if states.last() != Some(&WebsocketState::Closed) {
+        return Err(format!("stream ended without terminal closed: {states:?}"));
+    }
+    Ok(states)
+}
+
+/// Read every byte of a `stream-message` payload stream until it ends.
+async fn drain_byte_stream(reader: wit_bindgen::StreamReader<u8>) -> Vec<u8> {
+    let mut reader = reader;
+    let mut out = Vec::new();
+    loop {
+        let (status, chunk) = reader.read(Vec::with_capacity(8192)).await;
+        out.extend_from_slice(&chunk);
+        if matches!(
+            status,
+            wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+        ) {
+            break;
+        }
+    }
+    out
+}
+
+async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
+    let count = config.message_count.max(1);
+    let size = config.message_size.max(16);
+    match test_id {
+        "connect-basic" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let protocol = ws.protocol();
+            if !protocol.is_empty() {
+                return Err(format!(
+                    "expected no negotiated subprotocol, got {protocol:?}"
+                ));
+            }
+            ws.close(Some(1000), "").map_err(|e| describe(&e))?;
+            Ok(())
+        }
+        "connect-invalid-url" => {
+            let cases: &[String] = &[
+                format!("http{}", &config.server_url[2..]), // http:// scheme
+                format!("{}/echo#fragment", config.server_url),
+                "not a url".to_string(),
+                "/echo".to_string(),
+            ];
+            for url in cases {
+                match Websocket::connect(url.clone(), Vec::new()).await {
+                    Err(Error::InvalidUrl(_)) => {}
+                    Ok(_) => return Err(format!("connect {url:?} unexpectedly succeeded")),
+                    Err(other) => {
+                        return Err(format!(
+                            "connect {url:?}: expected invalid-url, got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            Ok(())
+        }
+        "connect-invalid-protocols" => {
+            let url = format!("{}/echo", config.server_url);
+            let cases: &[&[&str]] = &[&["dup", "dup"], &["has space"], &[""], &["bad,comma"]];
+            for protocols in cases {
+                let protocols: Vec<String> = protocols.iter().map(|p| p.to_string()).collect();
+                match Websocket::connect(url.clone(), protocols.clone()).await {
+                    Err(Error::InvalidArgument(_)) => {}
+                    Ok(_) => {
+                        return Err(format!(
+                            "connect with protocols {protocols:?} unexpectedly succeeded"
+                        ))
+                    }
+                    Err(other) => {
+                        return Err(format!(
+                            "connect with protocols {protocols:?}: expected invalid-argument, \
+                             got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            Ok(())
+        }
+        "connect-refused" => {
+            match Websocket::connect(config.unreachable_url.clone(), Vec::new()).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err("connect to unreachable url unexpectedly succeeded".to_string()),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "connect-rejected" => {
+            let url = format!("{}/reject", config.server_url);
+            match Websocket::connect(url.clone(), Vec::new()).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err("connect to /reject unexpectedly succeeded".to_string()),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "connect-timeout" => {
+            // The adapter configures a short connect bound; /stall never
+            // answers the handshake.
+            let url = format!("{}/stall", config.server_url);
+            match Websocket::connect(url.clone(), Vec::new()).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err("connect to /stall unexpectedly succeeded".to_string()),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "subprotocol-negotiated" => {
+            let ws = connect(config, "/echo?protocol=beta", &["alpha", "beta"]).await?;
+            let protocol = ws.protocol();
+            if protocol != "beta" {
+                return Err(format!("expected subprotocol \"beta\", got {protocol:?}"));
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "subprotocol-none-offered" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let protocol = ws.protocol();
+            if !protocol.is_empty() {
+                return Err(format!("expected no subprotocol, got {protocol:?}"));
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "subprotocol-unoffered-selected" => {
+            let url = format!("{}/echo?force-protocol=zeta", config.server_url);
+            match Websocket::connect(url.clone(), vec!["alpha".to_string()]).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err(
+                    "connect succeeded although the server selected an unoffered subprotocol"
+                        .to_string(),
+                ),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "subprotocol-none-selected" => {
+            let url = format!("{}/echo", config.server_url);
+            match Websocket::connect(url.clone(), vec!["alpha".to_string()]).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err(
+                    "connect succeeded although the server selected no offered subprotocol"
+                        .to_string(),
+                ),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "echo-binary" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let payload = make_payload(0, size);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            match receive(&ws).await? {
+                Message::Binary(bytes) if bytes == payload => {}
+                Message::Binary(_) => return Err("binary payload mismatch".to_string()),
+                Message::String(_) => return Err("binary message arrived as text".to_string()),
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "echo-text" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let text = "conformance text message";
+            send(&ws, Message::String(text.to_string())).await?;
+            match receive(&ws).await? {
+                Message::String(got) if got == text => {}
+                Message::String(_) => return Err("text payload mismatch".to_string()),
+                Message::Binary(_) => return Err("text message arrived as binary".to_string()),
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "echo-text-unicode" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let text = "héllo wörld — 你好 🦀\u{200d}🕸";
+            send(&ws, Message::String(text.to_string())).await?;
+            match receive(&ws).await? {
+                Message::String(got) if got == text => {}
+                other => {
+                    return Err(format!(
+                        "unicode text did not round-trip: got {}",
+                        match other {
+                            Message::String(_) => "different text",
+                            Message::Binary(_) => "binary",
+                        }
+                    ))
+                }
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "echo-empty" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            send(&ws, Message::Binary(Vec::new())).await?;
+            send(&ws, Message::String(String::new())).await?;
+            match receive(&ws).await? {
+                Message::Binary(bytes) if bytes.is_empty() => {}
+                _ => return Err("expected empty binary message".to_string()),
+            }
+            match receive(&ws).await? {
+                Message::String(text) if text.is_empty() => {}
+                _ => return Err("expected empty text message".to_string()),
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "echo-large" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let payload = make_payload(0, size.max(128 * 1024));
+            send(&ws, Message::Binary(payload.clone())).await?;
+            match receive(&ws).await? {
+                Message::Binary(bytes) if bytes == payload => {}
+                _ => return Err("large payload mismatch".to_string()),
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "message-boundaries" => {
+            // Back-to-back messages of varying sizes: each arrives as its
+            // own message, intact, in order.
+            let ws = connect(config, "/echo", &[]).await?;
+            let sizes = [1u32, 2, 3, 5, 8, 13, 21, 1024, 4, 64];
+            for (index, message_size) in sizes.iter().enumerate() {
+                send(
+                    &ws,
+                    Message::Binary(make_payload(index as u32, *message_size)),
+                )
+                .await?;
+            }
+            for (index, message_size) in sizes.iter().enumerate() {
+                let bytes = receive_binary(&ws).await?;
+                if bytes != make_payload(index as u32, *message_size) {
+                    return Err(format!("message {index} merged, split, or reordered"));
+                }
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "binary-text-interleave" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            for index in 0..8u32 {
+                if index % 2 == 0 {
+                    send(&ws, Message::Binary(make_payload(index, 32))).await?;
+                } else {
+                    send(&ws, Message::String(format!("text-{index}"))).await?;
+                }
+            }
+            for index in 0..8u32 {
+                match (index % 2, receive(&ws).await?) {
+                    (0, Message::Binary(bytes)) if bytes == make_payload(index, 32) => {}
+                    (1, Message::String(text)) if text == format!("text-{index}") => {}
+                    (_, got) => {
+                        return Err(format!(
+                            "message {index}: kind or payload wrong (got {})",
+                            match got {
+                                Message::Binary(_) => "binary",
+                                Message::String(_) => "text",
+                            }
+                        ))
+                    }
+                }
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "concurrent-send-receive" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let sender = send_sequence(&ws, count, size);
+            let receiver = recv_sequence(&ws, count);
+            let (sent, received) = futures::join!(sender, receiver);
+            sent?;
+            verify_sequence(&received?, count, size)?;
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "concurrent-receives" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            // Two receives pending before anything is sent; each must get
+            // exactly one of the two echoed messages.
+            let first = ws.receive();
+            let second = ws.receive();
+            let feed = async {
+                send(&ws, Message::Binary(make_payload(0, 32))).await?;
+                send(&ws, Message::Binary(make_payload(1, 32))).await
+            };
+            let (first, second, fed) = futures::join!(first, second, feed);
+            fed?;
+            let a = first.map_err(|e| format!("first receive: {}", describe(&e)))?;
+            let b = second.map_err(|e| format!("second receive: {}", describe(&e)))?;
+            let mut got = vec![
+                match a {
+                    Message::Binary(bytes) => bytes,
+                    Message::String(_) => return Err("unexpected text message".to_string()),
+                },
+                match b {
+                    Message::Binary(bytes) => bytes,
+                    Message::String(_) => return Err("unexpected text message".to_string()),
+                },
+            ];
+            got.sort();
+            let mut want = vec![make_payload(0, 32), make_payload(1, 32)];
+            want.sort();
+            if got != want {
+                return Err("concurrent receives lost or duplicated a message".to_string());
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "close-local" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            ws.close(Some(1000), "bye")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            // The suite server echoes the close frame verbatim, so the
+            // acknowledgement carries the same code and reason.
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1000 && info.reason == "bye" => Ok(()),
+                Some(info) => Err(format!(
+                    "close acknowledgement carried code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-local-default" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            ws.close(None, "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            // A code-less close frame is observed by the peer as 1005; the
+            // echoed acknowledgement carries the same.
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1005 && info.reason.is_empty() => Ok(()),
+                Some(info) => Err(format!(
+                    "expected code 1005 with empty reason, got code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-local-idempotent" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            ws.close(Some(1000), "first")
+                .map_err(|e| format!("first close: {}", describe(&e)))?;
+            ws.close(Some(4000), "second")
+                .map_err(|e| format!("second close: {}", describe(&e)))?;
+            match ws.wait_closed().await {
+                // Only the first close's frame was sent.
+                Some(info) if info.code == 1000 => Ok(()),
+                Some(info) => Err(format!(
+                    "second close overrode the first: code={}",
+                    info.code
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-invalid-code" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            for code in [0u16, 999, 1001, 1005, 1006, 1015, 2999, 5000, u16::MAX] {
+                match ws.close(Some(code), "") {
+                    Err(Error::InvalidArgument(_)) => {}
+                    Ok(()) => return Err(format!("close accepted invalid code {code}")),
+                    Err(other) => {
+                        return Err(format!(
+                            "close({code}): expected invalid-argument, got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            // A rejected close leaves the connection usable.
+            let payload = make_payload(7, 32);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            if receive_binary(&ws).await? != payload {
+                return Err("connection unusable after rejected close".to_string());
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "close-reason-too-long" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let long = "r".repeat(124);
+            match ws.close(Some(1000), &long) {
+                Err(Error::InvalidArgument(_)) => {}
+                Ok(()) => return Err("close accepted a 124-byte reason".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "expected invalid-argument, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            // Exactly 123 bytes is accepted.
+            let max = "r".repeat(123);
+            ws.close(Some(1000), &max)
+                .map_err(|e| format!("close with 123-byte reason: {}", describe(&e)))?;
+            Ok(())
+        }
+        "close-reason-without-code" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            match ws.close(None, "reason") {
+                Err(Error::InvalidArgument(_)) => {}
+                Ok(()) => return Err("close accepted a code-less reason".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "expected invalid-argument, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "send-after-close" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            ws.close(Some(1000), "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            match ws.send(Message::Binary(vec![1, 2, 3])).await {
+                Err(Error::Closed) => Ok(()),
+                Ok(()) => Err("send succeeded after close".to_string()),
+                Err(other) => Err(format!("expected closed, got {}", describe(&other))),
+            }
+        }
+        "receive-after-close" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            // Unread backlog is discarded by a local close.
+            send(&ws, Message::Binary(make_payload(0, 32))).await?;
+            ws.close(Some(1000), "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            match ws.receive().await {
+                Err(Error::Closed) => Ok(()),
+                Ok(_) => Err("receive yielded a message after local close".to_string()),
+                Err(other) => Err(format!("expected closed, got {}", describe(&other))),
+            }
+        }
+        "close-remote" => {
+            let ws = connect(
+                config,
+                "/close-after?count=1&code=4001&reason=going-away",
+                &[],
+            )
+            .await?;
+            let payload = make_payload(0, 32);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            if receive_binary(&ws).await? != payload {
+                return Err("echo before close corrupted".to_string());
+            }
+            match ws.receive().await {
+                Err(Error::Closed) => {}
+                Ok(_) => return Err("receive yielded a message after the close frame".to_string()),
+                Err(other) => return Err(format!("expected closed, got {}", describe(&other))),
+            }
+            match ws.wait_closed().await {
+                Some(info) if info.code == 4001 && info.reason == "going-away" => Ok(()),
+                Some(info) => Err(format!(
+                    "close frame carried code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-remote-no-code" => {
+            let ws = connect(config, "/close-after?count=0", &[]).await?;
+            match ws.receive().await {
+                Err(Error::Closed) => {}
+                Ok(_) => return Err("receive yielded an unexpected message".to_string()),
+                Err(other) => return Err(format!("expected closed, got {}", describe(&other))),
+            }
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1005 && info.reason.is_empty() => Ok(()),
+                Some(info) => Err(format!(
+                    "expected code 1005 with empty reason, got code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-abnormal" => {
+            let ws = connect(config, "/abrupt-close?after=1", &[]).await?;
+            let payload = make_payload(0, 32);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            if receive_binary(&ws).await? != payload {
+                return Err("echo before abrupt close corrupted".to_string());
+            }
+            match ws.receive().await {
+                Err(Error::Closed) => {}
+                Ok(_) => return Err("receive yielded a message after the drop".to_string()),
+                Err(other) => return Err(format!("expected closed, got {}", describe(&other))),
+            }
+            match ws.wait_closed().await {
+                None => Ok(()),
+                Some(info) => Err(format!(
+                    "abnormal closure produced close-info code={} (implementations must not invent one)",
+                    info.code
+                )),
+            }
+        }
+        "receive-backlog-before-close" => {
+            let burst = 5u32;
+            let ws = connect(
+                config,
+                "/burst-then-close?count=5&size=64&code=1000&reason=done",
+                &[],
+            )
+            .await?;
+            for index in 0..burst {
+                let bytes = receive_binary(&ws).await?;
+                if bytes != burst_payload(index, 64) {
+                    return Err(format!("backlog message {index} corrupted or reordered"));
+                }
+            }
+            match ws.receive().await {
+                Err(Error::Closed) => {}
+                Ok(_) => return Err("receive yielded more than the backlog".to_string()),
+                Err(other) => return Err(format!("expected closed, got {}", describe(&other))),
+            }
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1000 => Ok(()),
+                Some(info) => Err(format!("close frame carried code={}", info.code)),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "close-handshake-timeout" => {
+            // The server never answers the close frame; the connection must
+            // still reach closed within the host's (adapter-shortened)
+            // bound, with no peer close frame.
+            let ws = connect(config, "/ignore-close", &[]).await?;
+            ws.close(Some(1000), "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            match ws.wait_closed().await {
+                None => Ok(()),
+                Some(info) => Err(format!(
+                    "unanswered close produced close-info code={}",
+                    info.code
+                )),
+            }
+        }
+        "state-changes-lifecycle" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let mut stream = ws.state_changes();
+            // The first element reflects the state at the first read.
+            let (_, first) = stream.read(Vec::with_capacity(1)).await;
+            if first.as_slice() != [WebsocketState::Open] {
+                return Err(format!("expected first state open, got {first:?}"));
+            }
+            ws.close(Some(1000), "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            let states = drain_state_stream(stream).await?;
+            // `drain_state_stream` verified ordering and the terminal; the
+            // first element was already consumed above.
+            let _ = states;
+            Ok(())
+        }
+        "state-changes-take-once" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let first = ws.state_changes();
+            let mut second = ws.state_changes();
+            let (status, batch) = second.read(Vec::with_capacity(1)).await;
+            if !batch.is_empty()
+                || !matches!(
+                    status,
+                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+                )
+            {
+                return Err(format!(
+                    "second state-changes stream yielded {batch:?} ({status:?})"
+                ));
+            }
+            drop(first);
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "wait-closed-latched" => {
+            let ws = connect(config, "/close-after?count=0&code=4009&reason=latch", &[]).await?;
+            let first = ws.wait_closed().await;
+            let second = ws.wait_closed().await;
+            match (&first, &second) {
+                (Some(a), Some(b)) if a.code == 4009 && b.code == 4009 && a.reason == b.reason => {
+                    Ok(())
+                }
+                _ => Err(format!(
+                    "wait-closed not latched: first={first:?} second={second:?}"
+                )),
+            }
+        }
+        "send-via-stream" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let count = count.min(16);
+            let send_side = async {
+                let (mut tx, rx) = bindings::wit_stream::new();
+                let send = ws.send_via_stream(rx);
+                let feed = async {
+                    for index in 0..count {
+                        let payload = make_payload(index, size);
+                        let length = payload.len() as u32;
+                        let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                        let message = bindings::lann::websocket::types::StreamMessage {
+                            kind: MessageKind::Binary,
+                            length,
+                            data: data_rx,
+                        };
+                        if !tx.write_all(vec![message]).await.is_empty() {
+                            return Err("stream-message writer closed early".to_string());
+                        }
+                        if !data_tx.write_all(payload).await.is_empty() {
+                            return Err("payload writer closed early".to_string());
+                        }
+                        drop(data_tx);
+                    }
+                    drop(tx);
+                    Ok(())
+                };
+                let (sent, fed) = futures::join!(send, feed);
+                fed?;
+                sent.map_err(|e| {
+                    format!(
+                        "send-via-stream: {} after {} message(s)",
+                        describe(&e.error),
+                        e.sent
+                    )
+                })
+            };
+            send_side.await?;
+            let received = recv_sequence(&ws, count).await?;
+            verify_sequence(&received, count, size)?;
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "receive-via-stream" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let count = count.min(16);
+            send_sequence(&ws, count, size).await?;
+            let mut stream = ws
+                .receive_via_stream()
+                .map_err(|e| format!("receive-via-stream: {}", describe(&e)))?;
+            let mut received: Vec<Vec<u8>> = Vec::with_capacity(count as usize);
+            while received.len() < count as usize {
+                let (status, batch) = stream.read(Vec::with_capacity(1)).await;
+                for message in batch {
+                    let declared = message.length as usize;
+                    let is_text = matches!(message.kind, MessageKind::String);
+                    let bytes = drain_byte_stream(message.data).await;
+                    if bytes.len() != declared {
+                        return Err(format!(
+                            "stream-message declared {declared} bytes but carried {}",
+                            bytes.len()
+                        ));
+                    }
+                    if is_text {
+                        return Err("binary message delivered as text".to_string());
+                    }
+                    received.push(bytes);
+                }
+                if matches!(
+                    status,
+                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+                ) && received.len() < count as usize
+                {
+                    return Err(format!(
+                        "stream ended after {} of {count} message(s)",
+                        received.len()
+                    ));
+                }
+            }
+            verify_sequence(&received, count, size)?;
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "receive-via-stream-once" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            // A receive pending when the stream claims the connection must
+            // resolve with `receiving-via-stream`. `join!` polls in order:
+            // the receive starts first, then the claim is made.
+            let pending = ws.receive();
+            let claim = async {
+                ws.receive_via_stream()
+                    .map_err(|e| format!("first receive-via-stream: {}", describe(&e)))
+            };
+            let (pending, stream) = futures::join!(pending, claim);
+            let _stream = stream?;
+            match pending {
+                Err(Error::ReceivingViaStream) => {}
+                Ok(_) => return Err("pending receive yielded a message".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "pending receive: expected receiving-via-stream, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            match ws.receive_via_stream() {
+                Err(Error::ReceivingViaStream) => {}
+                Ok(_) => return Err("second receive-via-stream succeeded".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "second receive-via-stream: expected receiving-via-stream, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            match ws.receive().await {
+                Err(Error::ReceivingViaStream) => {}
+                Ok(_) => return Err("receive succeeded during stream receiving".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "receive during stream receiving: expected receiving-via-stream, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "receive-via-stream-end-on-close" => {
+            let ws = connect(config, "/burst-then-close?count=3&size=32&code=1000", &[]).await?;
+            let mut stream = ws
+                .receive_via_stream()
+                .map_err(|e| format!("receive-via-stream: {}", describe(&e)))?;
+            let mut received = 0u32;
+            loop {
+                let (status, batch) = stream.read(Vec::with_capacity(1)).await;
+                for message in batch {
+                    let bytes = drain_byte_stream(message.data).await;
+                    if bytes != burst_payload(received, 32) {
+                        return Err(format!("stream message {received} corrupted"));
+                    }
+                    received += 1;
+                }
+                if matches!(
+                    status,
+                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+                ) {
+                    break;
+                }
+            }
+            if received != 3 {
+                return Err(format!(
+                    "expected 3 messages before the close, got {received}"
+                ));
+            }
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1000 => Ok(()),
+                Some(info) => Err(format!("close frame carried code={}", info.code)),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
+        "receive-buffer-overflow" => {
+            // Flood 4x the bound the adapters configure
+            // (`ASSUMED_BUFFER_BOUND`) without receiving; the overflow
+            // closes the connection. The state stream (terminal always
+            // delivered) is the clock-free way to wait for that.
+            let flood_count = (4 * ASSUMED_BUFFER_BOUND) / 1024;
+            let ws = connect(
+                config,
+                &format!("/burst?count={flood_count}&size=1024"),
+                &[],
+            )
+            .await?;
+            let states = ws.state_changes();
+            drain_state_stream(states).await?;
+            // Drain the pre-overflow backlog, then expect the overflow
+            // error.
+            let mut drained = 0u32;
+            loop {
+                match ws.receive().await {
+                    Ok(Message::Binary(bytes)) => {
+                        if bytes != burst_payload(drained, 1024) {
+                            return Err(format!("backlog message {drained} corrupted"));
+                        }
+                        drained += 1;
+                        if drained > flood_count {
+                            return Err("received more messages than were sent".to_string());
+                        }
+                    }
+                    Ok(Message::String(_)) => return Err("unexpected text message".to_string()),
+                    Err(Error::ReceiveBufferOverflow) => break,
+                    Err(other) => {
+                        return Err(format!(
+                            "expected receive-buffer-overflow after the backlog, got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            if drained == 0 {
+                return Err("pre-overflow backlog was not receivable".to_string());
+            }
+            if drained >= flood_count {
+                return Err(format!(
+                    "all {flood_count} flooded messages were delivered; the buffer bound did not engage"
+                ));
+            }
+            Ok(())
+        }
+        other => Err(format!("unhandled test id {other:?}")),
+    }
+}

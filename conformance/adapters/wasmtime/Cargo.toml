@@ -1,0 +1,15 @@
+[package]
+name = "conformance-adapter-wasmtime"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Conformance adapter for the wasmtime (native tokio-tungstenite) target"
+
+[dependencies]
+anyhow = { workspace = true }
+conformance-common = { path = "../common" }
+conformance-echod = { path = "../../server" }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+wasmtime = { workspace = true }
+wasmtime-websocket = { path = "../../../rust/wasmtime" }

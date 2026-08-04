@@ -1,0 +1,18 @@
+[package]
+name = "conformance-guest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Shared conformance guest component: exports conformance:suite/runner and drives lann:websocket/connections against the suite echo server, one wasm binary run against every target."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The conformance world's bindings (imports `connections`, exports the async
+# `runner`): `async` pulls in the component-model stream/future runtime.
+wit-bindgen = { workspace = true, features = ["async"] }
+# Concurrent send/receive within a single cooperative task (no OS threads).
+futures = { version = "0.3", default-features = false, features = [
+    "async-await",
+] }

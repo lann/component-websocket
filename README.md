@@ -2,13 +2,25 @@
 
 A WIT interface for WebSocket client connections, plus multiple
 implementations that run the *same* guest component against real WebSocket
-stacks — planned as a sibling of
+stacks — a sibling of
 [`lann:webcrypto`](https://github.com/lann/component-webcrypto) and
 [`lann:webrtc-datachannels`](https://github.com/lann/component-webrtc-datachannels),
 deliberately mirroring their architecture.
 
-Status: **proposal**. This README is the design seed; open questions and
-findings are tracked in the [issues](../../issues).
+One guest component binary runs unchanged against:
+
+- a **browser-first** host ([`js/jco`](js/jco)): the standard `WebSocket`
+  API only, zero dependencies — the same file loads in a browser and under
+  Node (24+ for JSPI);
+- a **native Rust** host ([`rust/wasmtime`](rust/wasmtime)): Wasmtime +
+  [`tokio-tungstenite`], modeled after `wasmtime_wasi_http::p3`.
+
+The [conformance suite](conformance) runs the shared guest's corpus against
+every implementation — including inside a real headless Chromium — and
+holds them to one behavior. Open questions and findings are tracked in the
+[issues](../../issues).
+
+[`tokio-tungstenite`]: https://github.com/snapview/tokio-tungstenite
 
 ## Why this exists
 
@@ -28,63 +40,71 @@ general-purpose: message-oriented duplex connectivity that behaves
 identically in a browser, on a native host, and (where feasible) fully
 in-guest.
 
-## Planned shape
+## What's here
 
-Following the sibling repositories:
-
-| Piece | Deliverable |
+| Path | Deliverable |
 | --- | --- |
-| `wit/` | The `lann:websocket` package: a `types` interface for structural types (errors, message variants, close info) and a stateful interface owning the connection resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. |
-| jco host | Browser-first host library over the standard [`WebSocket` API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket) only — no `node:` modules, no runtime dependencies; the same file must load in a browser unchanged. Node (24+, for JSPI) is just the current runner. |
-| Wasmtime host | Native host crate (e.g. `tokio-tungstenite`), modeled after `wasmtime_wasi_http::p3`: `add_to_linker` + a view trait. |
-| In-guest provider | A wasm component running a WebSocket stack over `wasi:sockets` TCP, exporting the package surface; composable via `wac plug`. TLS is the open problem here — see "Design questions" below. |
-| `conformance/` | Cross-implementation conformance tests asserting the targets behave compatibly, run against a real WebSocket echo/reference server. |
+| [`wit/`](wit) | The `lann:websocket` package: a `types` interface for structural types and a `connections` interface owning the `websocket` resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. Package-wide contracts live in [`wit/README.md`](wit/README.md). |
+| [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the jco conformance adapters. |
+| [`rust/wasmtime`](rust/wasmtime) | The **Wasmtime host crate** (`wasmtime-websocket`): `add_to_linker` + `WasiWebsocketView`, per-store `WasiWebsocketCtx` knobs for the bounds the WIT leaves implementation-defined. |
+| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest with a 40-test corpus, a suite-owned echo server with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium), and the runner that classifies results into [the matrix](conformance/README.md). |
+| [`examples/`](examples) | The **echo-demo guest component** plus native (`just demo::wasmtime`) and Node (`just demo::node`) runners against the suite echo server. |
 
-## Design notes
+The in-guest provider (a WebSocket stack over `wasi:sockets` TCP,
+exporting this package's surface) is planned but not yet built; it is
+optional in the conformance target matrix, and its TLS posture is issue
+[#1](../../issues/1).
 
-These record the intended rulings; each becomes binding only when the WIT
-lands.
+## The interface
 
-- **Message-oriented, not byte-oriented.** WebSocket is a message protocol;
-  the interface preserves message boundaries. The surface should rhyme with
-  the sibling's `data-channel` resource: a `message` variant
-  (`binary(list<u8>)` / text), one message per `send`/`receive` call,
-  concurrency for pipelining, and stream-backed variants
-  (`stream<u8>` per message) to bound in-memory buffering for large
-  messages. Backpressure rides the component-model async ABI. A shared
-  shape here is deliberate: `component-iroh` wants to treat a relay
-  WebSocket and a WebRTC data channel as interchangeable message
-  transports.
-- **The browser API is the least capable implementation, and it constrains
-  the surface.** Browser `WebSocket` exposes no request headers, no client
-  certificates, no proxy control, no manual TLS trust decisions, and no
-  ping/pong access. The portable surface is therefore: URL (`ws:`/`wss:`),
-  subprotocol list, messages, and close (code + reason). Capabilities the
-  browser cannot serve are either designed out or isolated behind gates —
-  divergence between implementations is resolved, never accumulated (the
-  webcrypto sibling's portability ladder applies: design it out → enhance
-  the deficient implementation → narrow uniformly → record latitude →
-  gate).
-- **Client-only first.** Accepting WebSocket connections is a server
-  capability the browser lacks entirely and `component-iroh` does not need
-  from this package. A `listener` surface, if ever wanted, is additive.
-- **TLS in the in-guest provider.** `wss:` in-guest means a TLS client
-  stack (rustls) over `wasi:sockets`, which raises trust-anchor
-  provisioning and puts TLS secrets in guest linear memory. Options, to be
-  settled by issue: ship it with the limitation documented, scope the
-  in-guest provider to `ws:` (relay deployments terminating TLS elsewhere),
-  or adopt [`wasi-tls`](https://github.com/WebAssembly/wasi-tls) when it is
-  servable. The in-guest provider is explicitly *optional* in the
-  conformance target matrix, like structurally absent capabilities in the
-  siblings.
-- **Close semantics are part of the contract.** Close code/reason, the
-  half-closed states, and what `receive` returns after a clean vs. abnormal
-  close must be pinned by conformance cases from the start; this is where
-  WebSocket stacks disagree most.
+The package defines two interfaces (see [`wit/websocket.wit`](wit/websocket.wit)):
+
+- **`types`** — the `error` variant, the `message` variant
+  (`binary(list<u8>)` / `%string(string)`), the stream-backed
+  `stream-message` form, `close-info`, and the lifecycle enum.
+- **`connections`** — the `websocket` resource:
+  - `connect: static async func(url, protocols)` resolves once the
+    connection is open (so there is no observable `connecting` state);
+  - `send`/`receive` carry exactly **one** message per call, preserving
+    WebSocket message boundaries, with concurrent calls supported for
+    pipelining;
+  - `send-via-stream`/`receive-via-stream` carry each message's payload as
+    a byte `stream` to bound in-guest buffering;
+  - `state-changes` is a coalescing lifecycle watch; `wait-closed` is the
+    latched authority for close details (the peer's close frame, or `none`
+    for an abnormal closure);
+  - `close(code, reason)` validates eagerly against the codes a browser
+    client may send and initiates the closing handshake.
+
+The browser `WebSocket` API is the least capable implementation and bounds
+the portable surface: no request headers, client certificates, proxy
+control, trust decisions, or ping/pong access appear here. The
+close-semantics contract — what `receive` and `wait-closed` observe around
+local, remote-clean, and abnormal closes — is pinned in
+[`wit/README.md`](wit/README.md) ("Close contract") and exercised by
+conformance rows against the suite server's fault modes.
+
+A shared shape with the webrtc sibling's `data-channel` is deliberate:
+`component-iroh` wants to treat a relay WebSocket and a WebRTC data
+channel as interchangeable message transports.
+
+## Running it
+
+Prerequisites: `rustup`, Node 24+, and `./scripts/setup.sh` (installs the
+pinned `wasm-tools`/`just` and the npm trees).
+
+```sh
+./scripts/setup.sh
+just check           # fmt + clippy + WIT validation + native tests
+just conformance     # the full matrix: wasmtime, jco-node, jco-browser
+just demo::wasmtime  # the echo demo on the native host
+just demo::node      # the same component under Node + jco
+just ci              # exactly what CI runs
+```
 
 ## Relationship to standards efforts
 
 If a standard `wasi:websocket` (or an upgrade path in a future `wasi:http`)
 materializes, this package's job becomes migration, not competition — the
-same posture the siblings take toward their domains. The interface should
-stay small enough that mapping onto a standard surface is mechanical.
+same posture the siblings take toward their domains. The interface stays
+small enough that mapping onto a standard surface is mechanical.

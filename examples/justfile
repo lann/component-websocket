@@ -1,0 +1,27 @@
+# The example components and host runners: one guest component, every
+# host. The conformance suite is the behavioral gate; these show the
+# surface in use.
+
+import '../justfile.shared.just'
+
+default: test
+
+# Build the echo-demo guest into target/components/echo-demo.wasm.
+component: (build-component "echo-demo" "echo_demo")
+
+# The wasmtime demo, end to end (used by CI).
+test: component build-echod
+    cargo test -p wasmtime-demo
+
+# Run the native demo by hand: `just demo::wasmtime [count]`.
+wasmtime count="100": component build-echod
+    cargo run -p wasmtime-demo -- {{root}}/target/components/echo-demo.wasm {{count}}
+
+# Run the Node demo by hand: `just demo::node [count]`.
+node count="100": component build-echod
+    npm --prefix {{root}}/examples/jco-demo run transpile
+    npm --prefix {{root}}/examples/jco-demo run start {{count}}
+
+[private]
+build-echod:
+    cargo build -p conformance-echod

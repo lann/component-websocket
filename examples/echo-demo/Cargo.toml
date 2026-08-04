@@ -1,0 +1,12 @@
+[package]
+name = "echo-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Example guest component: round-trips messages through a lann:websocket connection"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { workspace = true, features = ["async"] }

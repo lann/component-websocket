@@ -1,0 +1,210 @@
+# The conformance test registry: the authoritative list of test ids and
+# their tags. The guest's corpus and the adapters' registry mirror this
+# file; the adapters' `verify_corpus` gate and the runner's id validation
+# keep the mirrors honest.
+#
+# Schema, per [[test]]:
+#   id          - stable, unique; matches the guest's `list-tests`.
+#   tags        - grouping labels a `targets.toml` entry may mark
+#                 unsupported. Keep tags stable as the corpus grows.
+#   description - one line, for humans and the matrix legend.
+
+[[test]]
+id = "connect-basic"
+tags = ["connect"]
+description = "connect to the echo server with no subprotocol offer; no protocol negotiated"
+
+[[test]]
+id = "connect-invalid-url"
+tags = ["connect", "errors"]
+description = "non-ws schemes, fragments, and non-URLs fail invalid-url eagerly"
+
+[[test]]
+id = "connect-invalid-protocols"
+tags = ["connect", "errors"]
+description = "duplicate or non-token subprotocol offers fail invalid-argument eagerly"
+
+[[test]]
+id = "connect-refused"
+tags = ["connect", "errors"]
+description = "a refused TCP connection fails connect-failed"
+
+[[test]]
+id = "connect-rejected"
+tags = ["connect", "errors"]
+description = "an HTTP error instead of the upgrade fails connect-failed"
+
+[[test]]
+id = "connect-timeout"
+tags = ["connect", "errors", "timeouts"]
+description = "a stalled handshake fails connect-failed within the host's connect bound"
+
+[[test]]
+id = "subprotocol-negotiated"
+tags = ["connect", "subprotocol"]
+description = "the server's selection from the offer is reported by protocol()"
+
+[[test]]
+id = "subprotocol-none-offered"
+tags = ["connect", "subprotocol"]
+description = "an empty offer negotiates nothing; protocol() is empty"
+
+[[test]]
+id = "subprotocol-unoffered-selected"
+tags = ["connect", "subprotocol", "errors"]
+description = "a server selecting an unoffered subprotocol fails the connect"
+
+[[test]]
+id = "subprotocol-none-selected"
+tags = ["connect", "subprotocol", "errors"]
+description = "a server selecting nothing despite a non-empty offer fails the connect"
+
+[[test]]
+id = "echo-binary"
+tags = ["messaging"]
+description = "a binary message round-trips intact"
+
+[[test]]
+id = "echo-text"
+tags = ["messaging"]
+description = "a text message round-trips intact as text"
+
+[[test]]
+id = "echo-text-unicode"
+tags = ["messaging"]
+description = "multi-byte UTF-8 text round-trips intact"
+
+[[test]]
+id = "echo-empty"
+tags = ["messaging"]
+description = "zero-length binary and text messages are delivered, not conflated with close"
+
+[[test]]
+id = "echo-large"
+tags = ["messaging"]
+description = "a 128 KiB message round-trips intact"
+
+[[test]]
+id = "message-boundaries"
+tags = ["messaging"]
+description = "back-to-back messages of varying sizes are neither merged nor split"
+
+[[test]]
+id = "binary-text-interleave"
+tags = ["messaging"]
+description = "interleaved binary and text messages keep their kinds, in order"
+
+[[test]]
+id = "concurrent-send-receive"
+tags = ["messaging"]
+description = "pipelined concurrent sends and receives round-trip a sequence in order"
+
+[[test]]
+id = "concurrent-receives"
+tags = ["messaging"]
+description = "two concurrently pending receives each get exactly one message"
+
+[[test]]
+id = "close-local"
+tags = ["close"]
+description = "close(1000, reason): the echoed acknowledgement carries the same code and reason"
+
+[[test]]
+id = "close-local-default"
+tags = ["close"]
+description = "close(none): the peer observes 1005; the acknowledgement echoes it"
+
+[[test]]
+id = "close-local-idempotent"
+tags = ["close"]
+description = "a second close is a no-op; only the first frame is sent"
+
+[[test]]
+id = "close-invalid-code"
+tags = ["close", "errors"]
+description = "codes outside 1000/3000-4999 fail invalid-argument and leave the connection usable"
+
+[[test]]
+id = "close-reason-too-long"
+tags = ["close", "errors"]
+description = "a 124-byte reason fails invalid-argument; 123 bytes is accepted"
+
+[[test]]
+id = "close-reason-without-code"
+tags = ["close", "errors"]
+description = "a reason without a code fails invalid-argument"
+
+[[test]]
+id = "send-after-close"
+tags = ["close", "errors"]
+description = "send after a local close fails closed"
+
+[[test]]
+id = "receive-after-close"
+tags = ["close", "errors"]
+description = "receive after a local close fails closed at once; the backlog is discarded"
+
+[[test]]
+id = "close-remote"
+tags = ["close"]
+description = "a server close frame: backlog drains, then closed; wait-closed carries the frame"
+
+[[test]]
+id = "close-remote-no-code"
+tags = ["close"]
+description = "a code-less server close frame is observed as 1005 with an empty reason"
+
+[[test]]
+id = "close-abnormal"
+tags = ["close"]
+description = "a dropped transport: backlog drains, then closed; wait-closed reports none"
+
+[[test]]
+id = "receive-backlog-before-close"
+tags = ["close", "flow-control"]
+description = "messages queued before the close frame stay receivable, in order"
+
+[[test]]
+id = "close-handshake-timeout"
+tags = ["close", "timeouts"]
+description = "an unanswered close frame still reaches closed within the host's bound"
+
+[[test]]
+id = "state-changes-lifecycle"
+tags = ["lifecycle"]
+description = "the state watch starts at open, never repeats or reverses, and ends with terminal closed"
+
+[[test]]
+id = "state-changes-take-once"
+tags = ["lifecycle"]
+description = "a second state-changes stream ends immediately without yielding"
+
+[[test]]
+id = "wait-closed-latched"
+tags = ["lifecycle"]
+description = "wait-closed resolves repeatedly with the same latched value"
+
+[[test]]
+id = "send-via-stream"
+tags = ["streaming"]
+description = "messages sent as byte streams arrive as whole messages, in order"
+
+[[test]]
+id = "receive-via-stream"
+tags = ["streaming"]
+description = "claimed inbound stream delivers each message with its declared kind and length"
+
+[[test]]
+id = "receive-via-stream-once"
+tags = ["streaming", "errors"]
+description = "the inbound stream may be claimed once; receive fails receiving-via-stream"
+
+[[test]]
+id = "receive-via-stream-end-on-close"
+tags = ["streaming", "close"]
+description = "the inbound stream ends when the server closes; wait-closed carries the frame"
+
+[[test]]
+id = "receive-buffer-overflow"
+tags = ["flow-control", "errors"]
+description = "a flood beyond the buffer bound closes the connection; backlog then receive-buffer-overflow"

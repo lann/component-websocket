@@ -11,16 +11,38 @@ WebSocket stacks. It is a sibling of
 [`lann:webrtc-datachannels`](https://github.com/lann/component-webrtc-datachannels)
 and deliberately mirrors their architecture — prefer clarity and
 correctness over features, and keep the implementations behaviourally in
-sync (cross-implementation conformance tests are the gate once they
-exist). See [`README.md`](README.md) for the design.
+sync (the cross-implementation conformance suite is the gate). See
+[`README.md`](README.md) for the design.
 
-The repository is currently a **design seed**: README plus issues. When
-adding the first code, copy the conventions from the siblings rather than
-inventing new ones — root `justfile` as the single entry point with
-component-scoped module justfiles, `scripts/setup.sh` for idempotent
-dependency setup, CI running the same `just` recipes, conformance driven
-by a shared guest with per-target adapters and a `targets.toml` declaring
-target facts.
+The repository follows the siblings' conventions: the root `justfile` is
+the single entry point (`just check` for the fast gate, `just ci` for the
+exact CI mirror) with component-scoped module justfiles; `scripts/setup.sh`
+is the idempotent dependency setup CI reuses verbatim; conformance is
+driven by a shared guest with per-target adapters and `targets.toml`
+declaring target facts.
+
+Layout (each directory's justfile module in parentheses):
+
+- `wit/` — the one copy of the `lann:websocket` package; `wit/README.md`
+  is the package contract document item docs reference by section name.
+- `rust/wasmtime/` — the `wasmtime-websocket` host crate. Its knobs (the
+  connect/close bounds, the inbound-buffer bound) live on
+  `WasiWebsocketCtx`; the crate reads no ambient environment.
+- `js/jco/` — `websocket.js`, the browser-first host module. Its knobs are
+  exported functions (`setMaxInboundBufferBytes`, `setConnectTimeoutMs`,
+  `setCloseTimeoutMs`); the module reads no ambient configuration.
+- `conformance/` (`just conformance`) — guest, echo server
+  (`server/PROTOCOL.md` is its wire contract), adapters, runner,
+  `tests.toml` + `targets.toml`. The corpus is mirrored in four places
+  (guest `CORPUS`, `adapters/common` `TESTS`, `adapters/jco/driver.js`
+  `TESTS`, `tests.toml`); `verify_corpus` gates the mirrors.
+- `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
+
+Checks to run before committing, by what changed: WIT or `wit/README.md` →
+`just validate-wit` then `just conformance` (a surface change is
+co-dependent across every implementation); either implementation →
+`just conformance`; Rust → `just check`; conformance machinery →
+`just conformance`; justfiles/CI → `just ci`.
 
 Before designing WIT or touching async/stream plumbing, consult
 [`lann/wasm-component-starter`](https://github.com/lann/wasm-component-starter)

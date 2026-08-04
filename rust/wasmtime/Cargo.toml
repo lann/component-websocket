@@ -1,0 +1,18 @@
+[package]
+name = "wasmtime-websocket"
+version = "0.1.0"
+edition = "2021"
+description = "Wasmtime host implementation of the lann:websocket interfaces over tokio-tungstenite"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tokio-tungstenite = { workspace = true }
+tungstenite = { workspace = true }
+wasmtime = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"

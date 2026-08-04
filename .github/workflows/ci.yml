@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The whole job body lives in the justfile (`just gha::<job>`), so `just ci`
+# is exactly CI; the workflow only provisions the environment.
+jobs:
+  rust-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: rust-checks
+          cache-all-crates: true
+          # PR branches restore but never save, so they don't evict main's
+          # caches under the repository cap.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install dependencies
+        run: ./scripts/setup.sh
+        env:
+          SKIP_NODE: "1"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: just gha::rust-checks
+
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: conformance
+          cache-all-crates: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: conformance/adapters/jco/package-lock.json
+      - name: Install dependencies
+        run: ./scripts/setup.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: just gha::conformance-checks
+        # The jco-browser adapter finds the runner's preinstalled Chrome via
+        # its candidate paths; CHROME_PATH overrides if ever needed.
+      - name: Upload conformance matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-matrix
+          path: conformance/matrix.md
+          if-no-files-found: ignore
