@@ -122,6 +122,10 @@ enum Mode {
         count: u32,
         size: u32,
     },
+    BurstOnMessage {
+        count: u32,
+        size: u32,
+    },
     BurstThenIgnore {
         count: u32,
         size: u32,
@@ -164,6 +168,10 @@ fn parse_mode(path: &str, query: &str) -> Option<Mode> {
             reason,
         }),
         "/burst" => Some(Mode::Burst {
+            count: int("count", 1),
+            size: int("size", 16),
+        }),
+        "/burst-on-message" => Some(Mode::BurstOnMessage {
             count: int("count", 1),
             size: int("size", 16),
         }),
@@ -373,6 +381,27 @@ async fn run_mode(mut ws: ServerWs, mode: Mode) {
             drain(&mut ws).await;
         }
         Mode::Burst { count, size } => {
+            for index in 0..count {
+                if ws
+                    .send(Message::binary(burst_payload(index, size)))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            drain(&mut ws).await;
+        }
+        Mode::BurstOnMessage { count, size } => {
+            // Wait for the client's trigger message, so the client can have
+            // a receive pending before the burst arrives.
+            loop {
+                match ws.next().await {
+                    Some(Ok(Message::Text(_) | Message::Binary(_))) => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) | None => return,
+                }
+            }
             for index in 0..count {
                 if ws
                     .send(Message::binary(burst_payload(index, size)))

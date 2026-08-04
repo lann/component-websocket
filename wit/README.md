@@ -33,8 +33,9 @@ a `stream-message`: a `kind`, a total `length` in bytes, and a byte
   producer that violates this is in error; the connection may be closed.
 - `receive-via-stream` may be called **once** per connection. After that
   call, `receive` and further `receive-via-stream` calls fail
-  `receiving-via-stream`. Pending `receive` calls are resolved with that
-  error before `receive-via-stream` returns.
+  `receiving-via-stream`. Pending `receive` calls fail with the same
+  error: a pending receive is never handed a message once the stream is
+  claimed.
 - A stream returned by `receive-via-stream` or `state-changes` ends when
   the connection closes, whatever the cause. The end of a stream carries
   no error value: consult `wait-closed` for close details.

@@ -105,10 +105,16 @@ pub const TESTS: &[&str] = &[
     "wait-closed-latched",
     "send-via-stream",
     "receive-via-stream",
+    "stream-text-round-trip",
+    "send-via-stream-invalid-utf8",
+    "send-via-stream-length-mismatch",
+    "send-via-stream-sent-count",
     "receive-via-stream-once",
     "receive-via-stream-end-on-close",
     "receive-buffer-overflow",
     "receive-buffer-overflow-unacknowledged",
+    "overflow-oversized-message",
+    "overflow-oversized-message-pending",
 ];
 
 /// Message count/size for count-parameterized tests.

@@ -200,6 +200,26 @@ tags = ["streaming"]
 description = "claimed inbound stream delivers each message with its declared kind and length"
 
 [[test]]
+id = "stream-text-round-trip"
+tags = ["streaming"]
+description = "text messages keep their kind and UTF-8 payload through both stream forms"
+
+[[test]]
+id = "send-via-stream-invalid-utf8"
+tags = ["streaming", "errors"]
+description = "a string-kind stream payload that is not valid UTF-8 errors instead of sending mangled text"
+
+[[test]]
+id = "send-via-stream-length-mismatch"
+tags = ["streaming", "errors"]
+description = "a stream payload shorter or longer than its declared length errors with sent=0"
+
+[[test]]
+id = "send-via-stream-sent-count"
+tags = ["streaming", "errors", "close"]
+description = "a stream interrupted by a remote close fails closed with sent counting the delivered messages"
+
+[[test]]
 id = "receive-via-stream-once"
 tags = ["streaming", "errors"]
 description = "the inbound stream may be claimed once; receive fails receiving-via-stream"
@@ -218,3 +238,13 @@ description = "a flood beyond the buffer bound closes the connection; backlog th
 id = "receive-buffer-overflow-unacknowledged"
 tags = ["flow-control", "errors", "timeouts"]
 description = "an overflow close the peer never acknowledges still reaches closed; backlog stays receivable and wait-closed reports none"
+
+[[test]]
+id = "overflow-oversized-message"
+tags = ["flow-control", "errors"]
+description = "a single message larger than the whole buffer bound overflows instead of being delivered"
+
+[[test]]
+id = "overflow-oversized-message-pending"
+tags = ["flow-control", "errors"]
+description = "the buffer bound holds even when a receive is already pending for the oversized message"
