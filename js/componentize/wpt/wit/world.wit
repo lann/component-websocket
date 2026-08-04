@@ -1,0 +1,33 @@
+// Harness-only WIT for the WPT parity runner: the world it is
+// componentized against. The shared `lann:websocket` package lives once at
+// the repository root `wit/` and is pulled in through the
+// `deps/lann-websocket` symlink.
+package wpt:parity@0.1.0;
+
+/// The runner's streaming channel: the embedder receives each settled
+/// test's record while the run is still executing, so a live consumer can
+/// show progress and a batch consumer (the Node round-trip leg) can simply
+/// collect.
+interface reporter {
+    /// One settled WPT test, as the JSON encoding of
+    /// `{ group, name, status, message? }` — the record shape the parity
+    /// comparator consumes.
+    report: func(%record: string);
+}
+
+/// The runner's entry point.
+interface runner {
+    /// Run every vendored WPT group against the shim, with WebSocket URLs
+    /// built from `server-url` (the suite echo server's `ws:` base).
+    /// Resolves only after every record has been reported; the ok value
+    /// carries the reported-record count for the consumer to cross-check.
+    run: async func(server-url: string) -> result<string, string>;
+}
+
+world wpt-parity-runner {
+    import reporter;
+    import lann:websocket/types@0.1.0;
+    import lann:websocket/connections@0.1.0;
+
+    export runner;
+}

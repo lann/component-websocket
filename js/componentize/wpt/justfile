@@ -1,0 +1,58 @@
+# The WPT parity gate: the vendored web-platform-tests WebSocket suites
+# run twice — directly against the platform's own WebSocket (the baseline)
+# and through the componentized shim transpiled by jco against
+# js/jco/websocket.js (the round trip) — and the comparator holds the
+# round trip to the baseline's pass set, with known losses pinned in
+# parity/losses.js. Both legs end at the same platform WebSocket and the
+# same suite echo server, so the delta isolates exactly what the carrier
+# stack (shim, WIT shape, component ABI, jco) loses. See README.md (this
+# directory) for the vendoring policy and architecture.
+
+import '../../../justfile.shared.just'
+
+timeout_cmd := `command -v timeout >/dev/null 2>&1 && echo "timeout 600" || echo ""`
+
+# Run the parity gate end to end: build the artifacts, run both legs,
+# compare. Needs Node 24+; the pinned componentize-js toolchain is
+# downloaded on first use (see component.sh).
+parity: _artifacts
+    {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-legs.mjs
+
+# Re-record parity/losses.js from an actual run: run this when a change
+# legitimately moves the loss set, and review the diff — every removed
+# line is a platform behavior the round trip now preserves, and every
+# added line needs a classification in the shim header's deviations
+# registry (js/componentize/websocket.js).
+update-losses: _artifacts
+    {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-legs.mjs --update
+
+# Componentize and transpile the pipeline smoke entry and run it: a fast
+# bisector for toolchain or jco bumps, asserting nothing the parity gate
+# does not, but failing in minutes rather than suites.
+smoke: build-echod
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd '{{root}}'
+    ./js/componentize/wpt/component.sh suites
+    "$(./js/componentize/wpt/component.sh toolchain)" -q \
+        -d js/componentize/wpt/wit -w wpt-parity-runner \
+        componentize js/componentize/wpt/smoke.js -p . \
+        -o js/componentize/wpt/build/smoke.component.wasm
+    cd js/componentize/wpt/parity
+    npm run -s transpile:smoke
+    node --experimental-wasm-jspi smoke-run.mjs
+
+# Regenerate the group modules and componentize the parity runner from the
+# working tree, then transpile it for the round-trip leg.
+[private]
+_artifacts: build-echod
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd '{{root}}'
+    ./js/componentize/wpt/component.sh build
+    cd js/componentize/wpt/parity
+    npm run -s transpile
+
+[private]
+build-echod:
+    cargo build -p conformance-echod

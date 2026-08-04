@@ -1,0 +1,15 @@
+# Digests of the published componentize-js builds for the revision pinned
+# in componentize-js.rev. The pin covers bytes, not just a filename:
+# nothing else ties a downloaded toolchain to that revision, and the
+# toolchain is the compiler that produces the wasm component the WPT gate
+# tests — a tampered one can emit a backdoored component and a green run.
+#
+# One line per platform:
+#
+#     <platform>  <sha256 of the published .gz asset>  <sha256 of the binary>
+#
+# The published builds (and these digests) are the webcrypto sibling's —
+# both repositories pin the same componentize-js revision; see
+# wpt/component.sh for the sourcing story.
+linux-aarch64  043b3695a82fef4114454fa3e7195d8bfcaf704ac8e3880ba53e27526d2620ee  e64592d1009bf7eed52d2d3efe33420c5c4c8d323bd9c3062db4fffe75cb713c
+linux-x86_64  9a38c0a6b82f0bab9ac63cfc65d3a4218f65c96c68fe43998e0053762d1697cd  69b9b79f422abf26b0836a5ddd653ce751c433adf944d465b71f89cca31ff927

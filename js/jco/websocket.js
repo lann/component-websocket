@@ -739,3 +739,10 @@ async function collectByteStream(stream, limit) {
   }
   return { bytes: out, excess };
 }
+
+// The interface-shaped aggregate export: jco's `--map
+// 'lann:websocket/*@0.1.0=websocket.js#*'` resolves each imported
+// interface to a named export of this module, so transpiled components
+// (the componentize round-trip legs) import `{ connections }` rather than
+// the module namespace the instantiation-mode adapters pass explicitly.
+export const connections = { Websocket };
