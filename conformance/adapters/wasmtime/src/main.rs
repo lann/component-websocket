@@ -18,9 +18,9 @@ use wasmtime::{Config, Engine, Store};
 use wasmtime_websocket::{WasiWebsocketCtx, WasiWebsocketCtxView, WasiWebsocketView};
 
 use conformance_common::{
-    default_jobs, params_for, run_corpus, unreachable_url, verify_corpus, write_report,
-    AdapterReport, RawResult, TestOutcome, CONFORMANCE_CLOSE_TIMEOUT, CONFORMANCE_CONNECT_TIMEOUT,
-    CONFORMANCE_MAX_INBOUND_BUFFER_BYTES, TESTS, TEST_TIMEOUT,
+    default_jobs, file_sha256, run_corpus, unreachable_url, verify_corpus, verify_registry,
+    write_report, AdapterReport, RawResult, TestOutcome, CONFORMANCE_CLOSE_TIMEOUT,
+    CONFORMANCE_CONNECT_TIMEOUT, CONFORMANCE_MAX_INBOUND_BUFFER_BYTES, TESTS, TEST_TIMEOUT,
 };
 
 mod bindings {
@@ -116,8 +116,8 @@ async fn run_instance(
     })
 }
 
-/// Fetch the guest's `list-tests` for the corpus-drift gate.
-async fn list_tests(engine: &Engine, component: &Component) -> Result<Vec<String>> {
+/// Fetch the guest's `list-tests` for the corpus-drift gates.
+async fn list_tests(engine: &Engine, component: &Component) -> Result<Vec<(String, Vec<String>)>> {
     let mut store = new_store(engine);
     let linker = add_to_linker(engine)?;
     let instance = Conformance::instantiate_async(&mut store, component, &linker).await?;
@@ -125,11 +125,12 @@ async fn list_tests(engine: &Engine, component: &Component) -> Result<Vec<String
         .conformance_suite_runner()
         .call_list_tests(&mut store)
         .await?;
-    Ok(descriptors.into_iter().map(|d| d.id).collect())
+    Ok(descriptors.into_iter().map(|d| (d.id, d.tags)).collect())
 }
 
 struct Cli {
     guest: PathBuf,
+    tests: PathBuf,
     out: PathBuf,
     only: Vec<String>,
     jobs: usize,
@@ -137,6 +138,7 @@ struct Cli {
 
 fn parse_cli() -> Result<Cli> {
     let mut guest = None;
+    let mut tests = PathBuf::from("conformance/tests.toml");
     let mut out = PathBuf::from("conformance/results");
     let mut only = Vec::new();
     let mut jobs = default_jobs();
@@ -148,6 +150,7 @@ fn parse_cli() -> Result<Cli> {
         };
         match arg.as_str() {
             "--guest" => guest = Some(PathBuf::from(value("--guest")?)),
+            "--tests" => tests = PathBuf::from(value("--tests")?),
             "--out" => out = PathBuf::from(value("--out")?),
             "--only" => only.push(value("--only")?),
             "--jobs" => jobs = value("--jobs")?.parse().context("--jobs")?,
@@ -156,6 +159,7 @@ fn parse_cli() -> Result<Cli> {
     }
     Ok(Cli {
         guest: guest.ok_or_else(|| anyhow::anyhow!("--guest <component.wasm> is required"))?,
+        tests,
         out,
         only,
         jobs,
@@ -170,9 +174,15 @@ async fn main() -> Result<()> {
         .map_err(anyhow::Error::from)
         .with_context(|| format!("load guest component {}", cli.guest.display()))?;
 
-    // The corpus-drift gate: the guest's corpus and the adapters' registry
-    // must agree before anything runs.
-    verify_corpus(&list_tests(&engine, &component).await?, TESTS)?;
+    // The corpus-drift gates: the guest's corpus, the adapters' registries,
+    // and the authoritative tests.toml (ids and tags) must all agree before
+    // anything runs.
+    let descriptors = list_tests(&engine, &component).await?;
+    let ids: Vec<String> = descriptors.iter().map(|(id, _)| id.clone()).collect();
+    verify_corpus(&ids, TESTS)?;
+    let registry = std::fs::read_to_string(&cli.tests)
+        .with_context(|| format!("read {}", cli.tests.display()))?;
+    verify_registry(&descriptors, &registry)?;
 
     let server = conformance_echod::spawn("127.0.0.1:0".parse().unwrap()).await?;
     let base_url = server.base_url();
@@ -185,7 +195,6 @@ async fn main() -> Result<()> {
         let base_url = base_url.clone();
         let unreachable = unreachable.clone();
         async move {
-            let (message_count, message_size) = params_for(test_id);
             conformance_common::run_test(test_id, TEST_TIMEOUT, async || {
                 run_instance(
                     engine,
@@ -194,8 +203,7 @@ async fn main() -> Result<()> {
                     TestConfig {
                         server_url: base_url.clone(),
                         unreachable_url: unreachable.clone(),
-                        message_count,
-                        message_size,
+                        max_inbound_buffer_bytes: CONFORMANCE_MAX_INBOUND_BUFFER_BYTES,
                     },
                 )
                 .await
@@ -212,6 +220,7 @@ async fn main() -> Result<()> {
     let report = AdapterReport {
         target: "wasmtime".to_string(),
         environment: "loopback".to_string(),
+        guest: file_sha256(&cli.guest)?,
         results,
     };
     let path = write_report(&cli.out, "wasmtime", &report)?;

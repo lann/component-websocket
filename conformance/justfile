@@ -35,14 +35,16 @@ build-all: build-guest transpile-guest build-echod build-adapter-wasmtime build-
 
 # ----- runners ----------------------------------------------------------------
 
-# Stale results must never classify as current.
+# Stale results must never classify as current; a stale matrix must not
+# outlive the run that would replace it.
 [private]
 _clean-results:
-    rm -f {{root}}/conformance/results/*.json
+    rm -f {{root}}/conformance/results/*.json {{root}}/conformance/matrix.md
 
 run-wasmtime:
     timeout {{timeout}} {{root}}/target/debug/conformance-adapter-wasmtime \
         --guest {{root}}/target/components/conformance-guest.wasm \
+        --tests {{root}}/conformance/tests.toml \
         --out {{root}}/conformance/results
 
 run-jco-node:
@@ -52,8 +54,20 @@ run-jco-browser:
     timeout {{timeout}} npm --prefix {{root}}/conformance/adapters/jco run run:browser
 
 # Classify the collected results against tests.toml and targets.toml and
-# render the matrix. Exits nonzero on any failing cell.
+# render the matrix. Completeness is required: every declared target must
+# have reported every registered test from one guest build. Exits nonzero
+# on any failing cell.
 classify:
+    {{root}}/target/debug/conformance-runner \
+        --tests {{root}}/conformance/tests.toml \
+        --targets {{root}}/conformance/targets.toml \
+        --results {{root}}/conformance/results \
+        --require-complete \
+        --matrix-out {{root}}/conformance/matrix.md
+
+# Classify whatever results exist (for `--only`/single-target iteration);
+# incompleteness warns instead of failing.
+classify-partial:
     {{root}}/target/debug/conformance-runner \
         --tests {{root}}/conformance/tests.toml \
         --targets {{root}}/conformance/targets.toml \

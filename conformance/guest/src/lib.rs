@@ -97,10 +97,16 @@ const CORPUS: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The inbound-buffer bound adapters must configure while running this
-/// corpus, so `receive-buffer-overflow` can trigger it with a bounded flood.
-/// Mirrored by `conformance-common::CONFORMANCE_MAX_INBOUND_BUFFER_BYTES`.
-const ASSUMED_BUFFER_BOUND: u32 = 256 * 1024;
+/// Message count and payload size for a count-parameterized test. The
+/// guest owns its stimulus (adapters cannot scale it), so every target
+/// runs the identical workload by construction.
+fn params(test_id: &str) -> (u32, u32) {
+    match test_id {
+        // Pipelining throughput probe: enough messages to overlap.
+        "concurrent-send-receive" => (200, 1024),
+        _ => (50, 1024),
+    }
+}
 
 struct Component;
 
@@ -277,8 +283,7 @@ async fn drain_byte_stream(reader: wit_bindgen::StreamReader<u8>) -> Vec<u8> {
 }
 
 async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
-    let count = config.message_count.max(1);
-    let size = config.message_size.max(16);
+    let (count, size) = params(test_id);
     match test_id {
         "connect-basic" => {
             let ws = connect(config, "/echo", &[]).await?;
@@ -1229,11 +1234,10 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             }
         }
         "receive-buffer-overflow" => {
-            // Flood 4x the bound the adapters configure
-            // (`ASSUMED_BUFFER_BOUND`) without receiving; the overflow
-            // closes the connection. The state stream (terminal always
-            // delivered) is the clock-free way to wait for that.
-            let flood_count = (4 * ASSUMED_BUFFER_BOUND) / 1024;
+            // Flood 4x the configured bound without receiving; the
+            // overflow closes the connection. The state stream (terminal
+            // always delivered) is the clock-free way to wait for that.
+            let flood_count = (4 * config.max_inbound_buffer_bytes) / 1024;
             let ws = connect(
                 config,
                 &format!("/burst?count={flood_count}&size=1024"),
@@ -1281,7 +1285,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             // close frame: the connection must still reach terminal
             // `closed` within the host's bound, the backlog must stay
             // receivable, and `wait-closed` reports an abnormal closure.
-            let flood_count = (4 * ASSUMED_BUFFER_BOUND) / 1024;
+            let flood_count = (4 * config.max_inbound_buffer_bytes) / 1024;
             let ws = connect(
                 config,
                 &format!("/burst-then-ignore?count={flood_count}&size=1024"),
@@ -1324,7 +1328,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             // A single message larger than the whole bound overflows
             // immediately: it is never delivered, and nothing precedes it
             // in the backlog.
-            let oversized = ASSUMED_BUFFER_BOUND + 1024;
+            let oversized = config.max_inbound_buffer_bytes + 1024;
             let ws = connect(config, &format!("/burst?count=1&size={oversized}"), &[]).await?;
             match ws.receive().await {
                 Err(Error::ReceiveBufferOverflow) => Ok(()),
@@ -1341,7 +1345,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             // The bound holds even when a receiver is already waiting for
             // the message: an oversized message overflows rather than
             // bypassing the buffer into the waiting receive.
-            let oversized = ASSUMED_BUFFER_BOUND + 1024;
+            let oversized = config.max_inbound_buffer_bytes + 1024;
             let ws = connect(
                 config,
                 &format!("/burst-on-message?count=1&size={oversized}"),

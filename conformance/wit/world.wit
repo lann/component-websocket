@@ -18,10 +18,10 @@ interface runner {
         /// A syntactically valid `ws:` URL whose connect attempt must fail
         /// (a closed port on loopback).
         unreachable-url: string,
-        /// Message count for count-parameterized tests.
-        message-count: u32,
-        /// Payload size for size-parameterized tests.
-        message-size: u32,
+        /// The inbound-buffer bound, in payload bytes, the adapter
+        /// configured on the implementation under test. The guest sizes
+        /// its overflow floods from this, so the two cannot drift.
+        max-inbound-buffer-bytes: u32,
     }
 
     /// The outcome of one test run.

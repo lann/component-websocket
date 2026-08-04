@@ -10,7 +10,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use futures::StreamExt as _;
 use serde::{Deserialize, Serialize};
 
@@ -53,6 +53,10 @@ pub struct AdapterReport {
     pub target: String,
     /// The network environment the run used (currently always `loopback`).
     pub environment: String,
+    /// The sha256 of the guest component this run executed (hex), so the
+    /// runner can reject a matrix assembled from mixed builds.
+    #[serde(default)]
+    pub guest: String,
     pub results: Vec<RawResult>,
 }
 
@@ -117,18 +121,13 @@ pub const TESTS: &[&str] = &[
     "overflow-oversized-message-pending",
 ];
 
-/// Message count/size for count-parameterized tests.
-pub fn params_for(test_id: &str) -> (u32, u32) {
-    match test_id {
-        // Pipelining throughput probe: enough messages to overlap.
-        "concurrent-send-receive" => (200, 1024),
-        _ => (50, 1024),
-    }
-}
-
+/// Message count/size for count-parameterized tests are owned by the
+/// guest itself (see its `params`), so every target runs the identical
+/// workload by construction; adapters carry no copy to drift.
+///
 /// The inbound-buffer bound every adapter must configure while running the
-/// corpus, so `receive-buffer-overflow` triggers with a bounded flood. The
-/// guest's flood sizing assumes exactly this value.
+/// corpus. It rides `test-config`, so the guest floods against exactly the
+/// bound the adapter configured — the two cannot drift.
 pub const CONFORMANCE_MAX_INBOUND_BUFFER_BYTES: u32 = 256 * 1024;
 
 /// The connect bound adapters must configure, so `connect-timeout` (the
@@ -255,6 +254,59 @@ pub fn verify_corpus(guest_ids: &[String], tests: &[&'static str]) -> Result<()>
             .join(", "),
     );
     Ok(())
+}
+
+/// Verify the guest's `list-tests` descriptors match the authoritative
+/// registry (`tests.toml`) exactly — ids and tags both — so the registry
+/// cannot claim coverage the guest does not implement, and guest tags
+/// (which drive skip classification) cannot drift from the declared ones.
+pub fn verify_registry(guest: &[(String, Vec<String>)], tests_toml: &str) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    struct Registry {
+        #[serde(rename = "test")]
+        tests: Vec<Entry>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Entry {
+        id: String,
+        tags: Vec<String>,
+    }
+    let registry: Registry = toml::from_str(tests_toml).context("parse tests.toml")?;
+    let declared: std::collections::BTreeMap<&str, &[String]> = registry
+        .tests
+        .iter()
+        .map(|t| (t.id.as_str(), t.tags.as_slice()))
+        .collect();
+    let listed: std::collections::BTreeMap<&str, &[String]> = guest
+        .iter()
+        .map(|(id, tags)| (id.as_str(), tags.as_slice()))
+        .collect();
+    for (id, tags) in &listed {
+        match declared.get(id) {
+            None => anyhow::bail!("guest test {id:?} is not registered in tests.toml"),
+            Some(declared_tags) if declared_tags != tags => anyhow::bail!(
+                "test {id:?} tags diverge: guest {tags:?}, tests.toml {declared_tags:?}"
+            ),
+            Some(_) => {}
+        }
+    }
+    for id in declared.keys() {
+        anyhow::ensure!(
+            listed.contains_key(id),
+            "tests.toml registers {id:?} but the guest does not implement it"
+        );
+    }
+    Ok(())
+}
+
+/// The sha256 of a file, hex-encoded: the provenance stamp adapters put in
+/// their reports so the runner can reject a matrix assembled from mixed
+/// guest builds.
+pub fn file_sha256(path: &Path) -> Result<String> {
+    use sha2::Digest as _;
+    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let digest = sha2::Sha256::digest(&bytes);
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// A loopback `ws:` URL whose connect attempt should be refused: a port that

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "jco conformance adapters (Node + headless browser) for lann:websocket: transpile the shared conformance guest and run it against the browser-first host over the suite echo server.",
   "scripts": {
-    "transpile": "jco transpile ../../../target/components/conformance-guest.wasm --name conformance-guest -I async -o generated && node patch-jco-string-lowering.mjs generated/conformance-guest.js",
+    "transpile": "jco transpile ../../../target/components/conformance-guest.wasm --name conformance-guest -I async -o generated && node patch-jco-string-lowering.mjs generated/conformance-guest.js && node record-component-hash.mjs ../../../target/components/conformance-guest.wasm generated/component-hash.txt",
     "run:node": "node --experimental-wasm-jspi run-node.mjs",
     "run:browser": "node run-browser.mjs"
   },
