@@ -62,20 +62,15 @@ export const TESTS = [
   "overflow-oversized-message-pending",
 ];
 
-/** The `[messageCount, messageSize]` a test runs with. */
-export function paramsFor(testId) {
-  switch (testId) {
-    case "concurrent-send-receive":
-      return [200, 1024];
-    default:
-      return [50, 1024];
-  }
-}
-
+// Message count/size for count-parameterized tests are owned by the guest
+// itself, so every target runs the identical workload by construction; the
+// drivers carry no copy to drift.
+//
 // The bounds the jco runners configure through the host module's exported
 // hooks, mirroring `conformance-common` (the Rust adapters' constants):
 // the buffer small enough that `receive-buffer-overflow` triggers with a
-// bounded flood, the timeouts short enough that the `/stall` and
+// bounded flood (it rides the test config, so the guest floods against
+// exactly this value), the timeouts short enough that the `/stall` and
 // `/ignore-close` probes resolve well inside the hang guard.
 export const MAX_INBOUND_BUFFER_BYTES = 256 * 1024;
 export const CONNECT_TIMEOUT_MS = 5_000;
@@ -178,8 +173,11 @@ export async function runCorpus({
 }
 
 async function runOne(newInstance, testId, serverUrl, unreachableUrl) {
-  const [messageCount, messageSize] = paramsFor(testId);
-  const config = { serverUrl, unreachableUrl, messageCount, messageSize };
+  const config = {
+    serverUrl,
+    unreachableUrl,
+    maxInboundBufferBytes: MAX_INBOUND_BUFFER_BYTES,
+  };
   let outcome;
   try {
     const instance = await newInstance();

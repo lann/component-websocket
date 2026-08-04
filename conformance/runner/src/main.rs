@@ -115,6 +115,10 @@ fn load_targets(text: &str, registry: &Registry) -> Result<BTreeMap<String, Targ
 struct AdapterReport {
     target: String,
     environment: String,
+    /// The sha256 of the guest component the run executed; empty when the
+    /// adapter could not determine it.
+    #[serde(default)]
+    guest: String,
     results: Vec<RawResult>,
 }
 
@@ -185,7 +189,19 @@ fn classify(
     targets: &BTreeMap<String, TargetFacts>,
     reports: &[AdapterReport],
 ) -> Result<Vec<Row>> {
-    // Transport validation first.
+    // Transport validation first. Mixed provenance is never classifiable:
+    // two reports from different guest builds are not one matrix.
+    let stamps: BTreeSet<&str> = reports
+        .iter()
+        .map(|r| r.guest.as_str())
+        .filter(|s| !s.is_empty())
+        .collect();
+    ensure!(
+        stamps.len() <= 1,
+        "results were produced from different guest builds ({} distinct stamps); \
+         re-run the full suite",
+        stamps.len()
+    );
     let mut seen_rows = BTreeSet::new();
     for report in reports {
         ensure!(
@@ -360,6 +376,11 @@ struct Cli {
     targets: PathBuf,
     results: PathBuf,
     matrix_out: Option<PathBuf>,
+    /// Promote incompleteness (missing cells, targets that did not report,
+    /// unstamped reports) from warnings to errors: the gate for the full
+    /// `all`/CI runs, where a partial matrix means something upstream
+    /// silently dropped work.
+    require_complete: bool,
 }
 
 fn parse_cli() -> Result<Cli> {
@@ -367,6 +388,7 @@ fn parse_cli() -> Result<Cli> {
     let mut targets = PathBuf::from("conformance/targets.toml");
     let mut results = PathBuf::from("conformance/results");
     let mut matrix_out = None;
+    let mut require_complete = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |name: &str| {
@@ -378,6 +400,7 @@ fn parse_cli() -> Result<Cli> {
             "--targets" => targets = PathBuf::from(value("--targets")?),
             "--results" => results = PathBuf::from(value("--results")?),
             "--matrix-out" => matrix_out = Some(PathBuf::from(value("--matrix-out")?)),
+            "--require-complete" => require_complete = true,
             other => bail!("unknown argument {other:?}"),
         }
     }
@@ -386,6 +409,7 @@ fn parse_cli() -> Result<Cli> {
         targets,
         results,
         matrix_out,
+        require_complete,
     })
 }
 
@@ -430,20 +454,43 @@ fn main() -> Result<()> {
     }
 
     let mut errors = 0usize;
+    // Incompleteness — a declared target that did not report, a reported
+    // target missing cells, or an unstamped report — is an error under
+    // `--require-complete` (the full-run/CI gate) and a warning otherwise
+    // (partial `--only` iteration).
+    let mut incomplete: Vec<String> = Vec::new();
+    for report in reports.iter().filter(|r| r.guest.is_empty()) {
+        incomplete.push(format!(
+            "target {:?} report carries no guest stamp",
+            report.target
+        ));
+    }
     for row in &rows {
         if row.environment.is_empty() {
-            eprintln!(
-                "warning: target {:?} declared but did not report",
+            incomplete.push(format!(
+                "target {:?} declared but did not report",
                 row.target
-            );
+            ));
         }
         for (id, cell) in &row.cells {
             if matches!(cell, Cell::Missing) {
-                eprintln!(
-                    "warning: target {:?} reported no result for {:?}",
+                incomplete.push(format!(
+                    "target {:?} reported no result for {:?}",
                     row.target, id
-                );
+                ));
             }
+        }
+    }
+    for message in &incomplete {
+        if cli.require_complete {
+            errors += 1;
+            eprintln!("error: {message}");
+        } else {
+            eprintln!("warning: {message}");
+        }
+    }
+    for row in &rows {
+        for (id, cell) in &row.cells {
             if cell.is_error() {
                 errors += 1;
                 eprintln!("error: {} / {}: {}", row.target, id, cell.label());
@@ -476,9 +523,14 @@ mod tests {
     }
 
     fn report(target: &str, results: &[(&str, RawStatus)]) -> AdapterReport {
+        report_stamped(target, "stamp-a", results)
+    }
+
+    fn report_stamped(target: &str, guest: &str, results: &[(&str, RawStatus)]) -> AdapterReport {
         AdapterReport {
             target: target.into(),
             environment: "loopback".into(),
+            guest: guest.into(),
             results: results
                 .iter()
                 .map(|(id, status)| RawResult {
@@ -488,6 +540,50 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn mixed_guest_stamps_are_rejected() {
+        let registry = registry();
+        let targets = load_targets("[target.t]\n[target.u]", &registry).unwrap();
+        let err = classify(
+            &registry,
+            &targets,
+            &[
+                report_stamped(
+                    "t",
+                    "stamp-a",
+                    &[("a", RawStatus::Pass), ("b", RawStatus::Pass)],
+                ),
+                report_stamped(
+                    "u",
+                    "stamp-b",
+                    &[("a", RawStatus::Pass), ("b", RawStatus::Pass)],
+                ),
+            ],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("different guest builds"));
+    }
+
+    #[test]
+    fn unstamped_reports_classify_when_alone() {
+        // A stampless report (an adapter that could not determine the
+        // build) still classifies; --require-complete rejects it at the
+        // completeness stage instead.
+        let registry = registry();
+        let targets = load_targets("[target.t]", &registry).unwrap();
+        let rows = classify(
+            &registry,
+            &targets,
+            &[report_stamped(
+                "t",
+                "",
+                &[("a", RawStatus::Pass), ("b", RawStatus::Pass)],
+            )],
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
     }
 
     #[test]

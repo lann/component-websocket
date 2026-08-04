@@ -138,7 +138,10 @@ async function main() {
     if (owned) await owned.shutdown();
   }
 
-  const report = { target: values.target, environment: values.environment, results };
+  const guest = (
+    await readFile(join(values.generated, "component-hash.txt"), "utf8").catch(() => "")
+  ).trim();
+  const report = { target: values.target, environment: values.environment, guest, results };
   await mkdir(values.out, { recursive: true });
   const outPath = join(values.out, `${values.target}.json`);
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`);
