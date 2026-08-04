@@ -73,9 +73,7 @@ const CORPUS: &[(&str, &[&str])] = &[
         "close-under-send-backpressure",
         &["close", "flow-control", "timeouts"],
     ),
-    ("state-changes-lifecycle", &["lifecycle"]),
-    ("state-changes-take-once", &["lifecycle"]),
-    ("state-changes-late-take", &["lifecycle"]),
+    ("state-lifecycle", &["lifecycle"]),
     ("wait-closed-latched", &["lifecycle"]),
     ("wait-closed-pending", &["lifecycle"]),
     ("send-via-stream", &["streaming"]),
@@ -228,49 +226,6 @@ fn verify_sequence(received: &[Vec<u8>], count: u32, size: u32) -> Result<(), St
         }
     }
     Ok(())
-}
-
-/// Read a state stream to its end, asserting the coalescing-watch contract:
-/// consecutive elements distinct, order monotonic, terminal `closed` last.
-/// Returns the observed states.
-async fn drain_state_stream(
-    mut stream: wit_bindgen::StreamReader<WebsocketState>,
-) -> Result<Vec<WebsocketState>, String> {
-    fn rank(state: WebsocketState) -> u8 {
-        match state {
-            WebsocketState::Open => 0,
-            WebsocketState::Closing => 1,
-            WebsocketState::Closed => 2,
-        }
-    }
-    let mut states: Vec<WebsocketState> = Vec::new();
-    loop {
-        let (status, batch) = stream.read(Vec::with_capacity(4)).await;
-        for state in batch {
-            if let Some(&last) = states.last() {
-                if last == state {
-                    return Err(format!("state {state:?} delivered twice in a row"));
-                }
-                if rank(state) < rank(last) {
-                    return Err(format!("state went backwards: {last:?} -> {state:?}"));
-                }
-                if last == WebsocketState::Closed {
-                    return Err(format!("state {state:?} delivered after terminal closed"));
-                }
-            }
-            states.push(state);
-        }
-        if matches!(
-            status,
-            wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
-        ) {
-            break;
-        }
-    }
-    if states.last() != Some(&WebsocketState::Closed) {
-        return Err(format!("stream ended without terminal closed: {states:?}"));
-    }
-    Ok(states)
 }
 
 /// Read every byte of a `stream-message` payload stream until it ends.
@@ -885,56 +840,30 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             }
             Ok(())
         }
-        "state-changes-lifecycle" => {
+        "state-lifecycle" => {
+            // The getter tracks the lifecycle forward-only and latches on
+            // closed. Whether closing is observable after close() returns
+            // is implementation-defined; open would mean the close was not
+            // observed locally at once.
             let ws = connect(config, "/echo", &[]).await?;
-            let mut stream = ws.state_changes();
-            // The first element reflects the state at the first read.
-            let (_, first) = stream.read(Vec::with_capacity(1)).await;
-            if first.as_slice() != [WebsocketState::Open] {
-                return Err(format!("expected first state open, got {first:?}"));
+            match ws.state() {
+                WebsocketState::Open => {}
+                other => return Err(format!("state after connect: {other:?}")),
             }
             ws.close(Some(1000), "")
                 .map_err(|e| format!("close: {}", describe(&e)))?;
-            let states = drain_state_stream(stream).await?;
-            // `drain_state_stream` verified ordering and the terminal; the
-            // first element was already consumed above.
-            let _ = states;
-            Ok(())
-        }
-        "state-changes-take-once" => {
-            let ws = connect(config, "/echo", &[]).await?;
-            let first = ws.state_changes();
-            let mut second = ws.state_changes();
-            let (status, batch) = second.read(Vec::with_capacity(1)).await;
-            if !batch.is_empty()
-                || !matches!(
-                    status,
-                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
-                )
-            {
-                return Err(format!(
-                    "second state-changes stream yielded {batch:?} ({status:?})"
-                ));
+            if ws.state() == WebsocketState::Open {
+                return Err("state still open after close returned".to_string());
             }
-            drop(first);
-            let _ = ws.close(Some(1000), "");
-            Ok(())
-        }
-        "state-changes-late-take" => {
-            // The stream is demand-driven: taken (and first read) only
-            // after a close, its first element reflects the state at the
-            // read — never a stale `open` snapshot from take time.
-            let ws = connect(config, "/echo", &[]).await?;
-            ws.close(Some(1000), "")
-                .map_err(|e| format!("close: {}", describe(&e)))?;
             let _ = ws.wait_closed().await;
-            let states = drain_state_stream(ws.state_changes()).await?;
-            match states.first() {
-                Some(WebsocketState::Open) => {
-                    Err("first element was open although the connection had closed".to_string())
-                }
-                Some(_) => Ok(()),
-                None => Err("state stream ended without any element".to_string()),
+            match ws.state() {
+                WebsocketState::Closed => {}
+                other => return Err(format!("state after wait-closed: {other:?}")),
+            }
+            // Latched: it never leaves closed.
+            match ws.state() {
+                WebsocketState::Closed => Ok(()),
+                other => Err(format!("closed did not latch: {other:?}")),
             }
         }
         "wait-closed-latched" => {
@@ -1350,7 +1279,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 .map_err(|e| format!("receive-via-stream: {}", describe(&e)))?;
             // Wait for the overflow close to land before reading, so the
             // flood outpaces consumption deterministically.
-            drain_state_stream(ws.state_changes()).await?;
+            let _ = ws.wait_closed().await;
             let mut received = 0u32;
             loop {
                 let (status, batch) = stream.read(Vec::with_capacity(1)).await;
@@ -1389,8 +1318,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 &[],
             )
             .await?;
-            let states = ws.state_changes();
-            drain_state_stream(states).await?;
+            let _ = ws.wait_closed().await;
             // Drain the pre-overflow backlog, then expect the overflow
             // error.
             let mut drained = 0u32;
@@ -1437,8 +1365,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 &[],
             )
             .await?;
-            let states = ws.state_changes();
-            drain_state_stream(states).await?;
+            let _ = ws.wait_closed().await;
             let mut drained = 0u32;
             loop {
                 match ws.receive().await {

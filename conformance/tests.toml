@@ -185,19 +185,9 @@ tags = ["close", "flow-control", "timeouts"]
 description = "closing completes within the bound even while large sends stall against a silent peer"
 
 [[test]]
-id = "state-changes-lifecycle"
+id = "state-lifecycle"
 tags = ["lifecycle"]
-description = "the state watch starts at open, never repeats or reverses, and ends with terminal closed"
-
-[[test]]
-id = "state-changes-take-once"
-tags = ["lifecycle"]
-description = "a second state-changes stream ends immediately without yielding"
-
-[[test]]
-id = "state-changes-late-take"
-tags = ["lifecycle"]
-description = "a stream taken after the close reflects the state at the first read, never a stale open"
+description = "the state getter reports open after connect, leaves open once close returns, and latches on closed"
 
 [[test]]
 id = "wait-closed-latched"

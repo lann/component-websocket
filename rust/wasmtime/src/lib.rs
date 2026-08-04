@@ -31,7 +31,6 @@
 pub mod bindings;
 mod error;
 mod host;
-mod state_watch;
 mod websocket;
 
 pub use error::{WebsocketError, WebsocketResult};

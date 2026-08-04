@@ -36,9 +36,9 @@ a `stream-message`: a `kind`, a total `length` in bytes, and a byte
   `receiving-via-stream`. Pending `receive` calls fail with the same
   error: a pending receive is never handed a message once the stream is
   claimed.
-- A stream returned by `receive-via-stream` or `state-changes` ends when
-  the connection closes, whatever the cause. The end of a stream carries
-  no error value: consult `wait-closed` for close details.
+- A stream returned by `receive-via-stream` ends when the connection
+  closes, whatever the cause. The end of a stream carries no error value:
+  consult `wait-closed` for close details.
 - Streaming bounds the *guest's* memory. It does not promise that the
   implementation never materializes a message: a browser-backed
   implementation receives each message fully materialized by the platform
@@ -156,7 +156,11 @@ guests do not rely on either behavior:
   close frame was received", nothing more.
 - **Concurrency ordering.** Concurrently pending `send`s and `receive`s
   are served in an implementation-defined order.
-- **State granularity.** `state-changes` may coalesce `closing` away.
+- **`closing` observability.** Whether `state` ever reports `closing` is
+  implementation- and timing-defined: a locally initiated close passes
+  through it observably, but no implementation can promise it for a
+  remote close (the browser `WebSocket` API fires no event on that
+  transition), and a poll can always land after the transition completed.
 - **Buffer bounds and timeouts.** The inbound-buffer bound, the connect
   timeout, and the closing-handshake bound are implementation-defined;
   embedders may configure them through implementation-specific channels.
@@ -181,6 +185,13 @@ short:
   authority avoids implementations disagreeing about which errors carry
   the frame, and keeps this package's `error.closed` shaped like its
   sibling transports' for consumers that abstract over message transports.
+- **Lifecycle is a getter plus a latch, not a watch.** The only lifecycle
+  push every implementation can guarantee is the terminal one, and
+  `wait-closed` already delivers it carrying the close frame; the browser
+  fires no event for the `closing` transition, so a state-change stream
+  could promise nothing more than `state` + `wait-closed` do, while
+  adding take-once semantics whose "ended without yielding" shape
+  collides with meaningful end-of-stream.
 - **`connect` takes plain arguments, not an options builder.** The
   portable connect surface is exactly a URL and a subprotocol offer.
   Capabilities behind a future gate (for example request headers on

@@ -26,7 +26,6 @@ use crate::bindings::websocket::types::{
     self, CloseInfo, Error, Message, MessageKind, SendViaStreamError, StreamMessage, WebsocketState,
 };
 use crate::error::WebsocketError;
-use crate::state_watch::StateWatch;
 use crate::websocket::{next_inbound, ConnectConfig, InboundQueue, Payload, Signal, WsState};
 use crate::{WasiWebsocket, WasiWebsocketCtxView, Websocket};
 
@@ -78,6 +77,14 @@ impl connections::Host for WasiWebsocketCtxView<'_> {}
 impl HostWebsocket for WasiWebsocketCtxView<'_> {
     fn protocol(&mut self, self_: Resource<Websocket>) -> Result<String> {
         Ok(self.table.get(&self_)?.protocol())
+    }
+
+    fn state(&mut self, self_: Resource<Websocket>) -> Result<WebsocketState> {
+        Ok(match self.table.get(&self_)?.state() {
+            WsState::Open => WebsocketState::Open,
+            WsState::Closing => WebsocketState::Closing,
+            WsState::Closed => WebsocketState::Closed,
+        })
     }
 
     fn close(
@@ -322,78 +329,6 @@ impl<D: Send + 'static> StreamConsumer<D> for OutboundStreamMessages {
     }
 }
 
-/// A [`StreamProducer`] backing the `state-changes` stream: a coalescing
-/// watch over the connection's [`StateWatch`], converting each internal
-/// state into its WIT enum on demand. The first element reflects the state
-/// at the first read; consecutive elements are distinct; the stream ends
-/// after the terminal state.
-struct StateChanges {
-    /// The watch, or `None` if `state-changes` was already claimed (in which
-    /// case the stream is empty).
-    watch: Option<Arc<StateWatch<WsState>>>,
-    /// The version of the last-delivered state (`None` before the first).
-    delivered: Option<u64>,
-}
-
-impl<D: Send + 'static> StreamProducer<D> for StateChanges {
-    type Item = WebsocketState;
-    type Buffer = Option<WebsocketState>;
-
-    fn poll_produce<'a>(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        _store: StoreContextMut<'a, D>,
-        mut destination: Destination<'a, Self::Item, Self::Buffer>,
-        finish: bool,
-    ) -> Poll<Result<StreamResult>> {
-        let this = self.get_mut(); // safe: StateChanges is Unpin
-        let Some(watch) = this.watch.as_ref() else {
-            return Poll::Ready(Ok(StreamResult::Dropped));
-        };
-        let (value, version) = watch.current();
-        match this.delivered {
-            // Already delivered this version: the stream ends after the
-            // terminal state, otherwise wait for the next change.
-            // Terminality is tested on the snapshotted value: re-reading
-            // the watch here would race a concurrent transition to
-            // terminal and end the stream without delivering it.
-            Some(seen) if seen == version => {
-                if watch.is_terminal(&value) {
-                    return Poll::Ready(Ok(StreamResult::Dropped));
-                }
-                match watch.poll_changed(seen, cx) {
-                    Poll::Ready(_) => {
-                        if finish {
-                            Poll::Ready(Ok(StreamResult::Cancelled))
-                        } else {
-                            // Changed between `current` and here; re-poll.
-                            cx.waker().wake_by_ref();
-                            Poll::Pending
-                        }
-                    }
-                    Poll::Pending => {
-                        if finish {
-                            Poll::Ready(Ok(StreamResult::Cancelled))
-                        } else {
-                            Poll::Pending
-                        }
-                    }
-                }
-            }
-            // A new (or first) state: deliver it.
-            _ => {
-                this.delivered = Some(version);
-                destination.set_buffer(Some(match value {
-                    WsState::Open => WebsocketState::Open,
-                    WsState::Closing => WebsocketState::Closing,
-                    WsState::Closed => WebsocketState::Closed,
-                }));
-                Poll::Ready(Ok(StreamResult::Completed))
-            }
-        }
-    }
-}
-
 impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
     async fn connect(
         accessor: &Accessor<T, Self>,
@@ -597,25 +532,6 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
             },
         )?;
         Ok(Ok(reader))
-    }
-
-    fn state_changes(
-        mut access: Access<'_, T, Self>,
-        self_: Resource<Websocket>,
-    ) -> Result<StreamReader<WebsocketState>> {
-        let websocket = access.get().table.get(&self_)?;
-        // Take-once per the WIT contract: a later call returns a stream that
-        // ends immediately.
-        let watch = websocket
-            .take_state_stream()
-            .then(|| websocket.state_watch());
-        StreamReader::new(
-            access,
-            StateChanges {
-                watch,
-                delivered: None,
-            },
-        )
     }
 
     async fn wait_closed(

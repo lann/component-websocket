@@ -119,7 +119,7 @@ interface types {
 
     /// The lifecycle state of a `connections.websocket`, mirroring the W3C
     /// `WebSocket.readyState` values reachable after a successful connect.
-    /// See `connections.websocket.state-changes` for delivery semantics.
+    /// Reported by `connections.websocket.state`.
     enum websocket-state {
         /// The connection is open: `send` and `receive` operate normally.
         open,
@@ -242,19 +242,15 @@ interface connections {
         /// a message once the stream is claimed.
         receive-via-stream: func() -> result<stream<stream-message>, error>;
 
-        /// A stream of lifecycle states, behaving as a coalescing watch:
-        /// each element is the connection's state as observed when that
-        /// element is produced — production is demand-driven, so the first
-        /// element reflects the state at the first read, not at the time
-        /// this stream was taken. Consecutive elements are always distinct;
-        /// intermediate states may be coalesced away, never invented; the
-        /// terminal `closed` is always delivered and ends the stream.
-        /// Guests must not depend on observing `closing`.
+        /// The connection's current lifecycle state.
         ///
-        /// The stream may be taken **once**: the first call returns it, and
-        /// every later call returns a stream that ends immediately without
-        /// yielding anything.
-        state-changes: func() -> stream<websocket-state>;
+        /// `closed` is terminal and latched: once reported, every later
+        /// call reports it too. Whether `closing` is ever observable is
+        /// implementation- and timing-defined — a locally initiated close
+        /// passes through it observably; a remote close may not (see
+        /// `README.md`, "Portability contract"). To wait for the close
+        /// rather than poll for it, use `wait-closed`.
+        state: func() -> websocket-state;
 
         /// Resolve once the connection is closed, with the contents of the
         /// peer's close frame if one was received — including the peer's
@@ -271,9 +267,8 @@ interface connections {
         ///
         /// Deliberately synchronous, matching the W3C `WebSocket.close()`:
         /// it initiates the closing handshake and returns; await
-        /// `wait-closed` (or `state-changes` reaching `closed`) for
-        /// completion. Idempotent: closing an already-closing or closed
-        /// connection succeeds and is a no-op.
+        /// `wait-closed` for completion. Idempotent: closing an
+        /// already-closing or closed connection succeeds and is a no-op.
         ///
         /// Argument validation is eager and uniform: `code` must be 1000 or
         /// in 3000-4999 (the codes a browser client may send — see
