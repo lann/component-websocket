@@ -26,6 +26,7 @@ ignored; unknown paths answer HTTP 404.
 | `GET /healthz` | Plain HTTP 200. Readiness probe; not a WebSocket endpoint. |
 | `/echo` | Echo every text/binary message verbatim, preserving kind and boundaries. The closing handshake is echoed too: a client close frame is acknowledged with the same code and reason. |
 | `/reject` | Answer the upgrade with HTTP 403: the client observes a failed handshake. |
+| `/redirect` | Answer the upgrade with HTTP 302 `Location: /echo`: clients must not follow (a client that did would reach a working echo endpoint and expose itself). |
 | `/stall` | Never answer the handshake (held up to 120 s): the client's connect bound must fire. **Holds a pending handshake**: browsers serialize in-flight WebSocket handshakes per endpoint, so concurrent connects to the same host:port queue behind it. |
 | `/close-after?count=N&code=C&reason=R` | Echo `N` messages (default 0), then the server initiates the close with code `C` and reason `R`; `code` omitted sends a code-less close frame (observed as 1005). Drains until the handshake completes. |
 | `/burst-then-close?count=N&size=S&code=C&reason=R` | Immediately send `N` binary messages (default 1) of `S` bytes (default 16), then a close frame as in `/close-after`. |

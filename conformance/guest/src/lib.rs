@@ -34,6 +34,7 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("connect-invalid-protocols", &["connect", "errors"]),
     ("connect-refused", &["connect", "errors"]),
     ("connect-rejected", &["connect", "errors"]),
+    ("connect-redirect", &["connect", "errors"]),
     ("connect-timeout", &["connect", "errors", "timeouts"]),
     ("subprotocol-negotiated", &["connect", "subprotocol"]),
     ("subprotocol-none-offered", &["connect", "subprotocol"]),
@@ -260,9 +261,13 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             Ok(())
         }
         "connect-invalid-url" => {
+            // server_url is `ws://host:port`; splice userinfo in after the
+            // scheme for the credentials case.
+            let with_userinfo = format!("ws://user:secret@{}/echo", &config.server_url[5..]);
             let cases: &[String] = &[
                 format!("http{}", &config.server_url[2..]), // http:// scheme
                 format!("{}/echo#fragment", config.server_url),
+                with_userinfo,
                 "not a url".to_string(),
                 "/echo".to_string(),
             ];
@@ -315,6 +320,18 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             match Websocket::connect(url.clone(), Vec::new()).await {
                 Err(Error::ConnectFailed(_)) => Ok(()),
                 Ok(_) => Err("connect to /reject unexpectedly succeeded".to_string()),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "connect-redirect" => {
+            // A redirect instead of the upgrade must fail the connect;
+            // clients never follow (the redirect target is a working echo
+            // endpoint, so a client that followed would connect and fail
+            // here).
+            let url = format!("{}/redirect", config.server_url);
+            match Websocket::connect(url.clone(), Vec::new()).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err("connect followed a redirect".to_string()),
                 Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
             }
         }

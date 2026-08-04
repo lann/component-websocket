@@ -124,6 +124,11 @@ function validateUrl(url) {
   if (!parsed.hostname) {
     throw { tag: "invalid-url", val: "URL must have a host" };
   }
+  // The WHATWG WebSocket constructor rejects credentials in the URL; the
+  // eager taxonomy matches that floor uniformly.
+  if (parsed.username || parsed.password) {
+    throw { tag: "invalid-url", val: "URL must not have userinfo" };
+  }
 }
 
 /** Validate a subprotocol offer per the WIT contract; throws `invalid-argument`. */

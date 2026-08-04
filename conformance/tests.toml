@@ -17,7 +17,7 @@ description = "connect to the echo server with no subprotocol offer; no protocol
 [[test]]
 id = "connect-invalid-url"
 tags = ["connect", "errors"]
-description = "non-ws schemes, fragments, and non-URLs fail invalid-url eagerly"
+description = "non-ws schemes, fragments, userinfo, and non-URLs fail invalid-url eagerly"
 
 [[test]]
 id = "connect-invalid-protocols"
@@ -33,6 +33,11 @@ description = "a refused TCP connection fails connect-failed"
 id = "connect-rejected"
 tags = ["connect", "errors"]
 description = "an HTTP error instead of the upgrade fails connect-failed"
+
+[[test]]
+id = "connect-redirect"
+tags = ["connect", "errors"]
+description = "a redirect instead of the upgrade fails the connect; clients never follow"
 
 [[test]]
 id = "connect-timeout"
