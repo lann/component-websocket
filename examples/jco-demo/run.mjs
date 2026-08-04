@@ -2,29 +2,23 @@
 // guest with the browser-first host module and drives it against a
 // spawned suite echo server. Requires Node 24+ (JSPI; the npm `start`
 // script supplies the flag).
-import { spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// The demo consumes the suite's echo server and Node helpers (the
+// suite-facing stable surface: the binary's LISTENING line contract).
+import { requireNode24, spawnEchod } from "../../conformance/adapters/jco/echod.mjs";
 import * as connections from "../../js/jco/websocket.js";
+
+requireNode24();
 
 const DEMO_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(DEMO_DIR, "..", "..");
 const COUNT = Number(process.argv[2] ?? 100);
 
-const echod = spawn(join(REPO_ROOT, "target", "debug", "conformance-echod"), [], {
-  stdio: ["ignore", "pipe", "inherit"],
-});
-const base = await new Promise((resolveUrl, rejectUrl) => {
-  let buffer = "";
-  echod.stdout.on("data", (chunk) => {
-    buffer += chunk;
-    const match = /LISTENING (ws:\/\/\S+)/.exec(buffer);
-    if (match) resolveUrl(match[1].trim());
-  });
-  echod.on("exit", (code) => rejectUrl(new Error(`echo server exited early (${code})`)));
-});
+const echod = await spawnEchod(join(REPO_ROOT, "target", "debug", "conformance-echod"));
+const base = echod.base;
 
 try {
   const generated = join(DEMO_DIR, "generated");
@@ -47,5 +41,5 @@ try {
     process.exitCode = 1;
   }
 } finally {
-  echod.kill("SIGTERM");
+  await echod.shutdown();
 }

@@ -236,7 +236,11 @@ impl<D: Send + 'static> StreamProducer<D> for InboundStreamMessages {
                     Payload::Text(text) => (MessageKind::String, text.into_bytes()),
                     Payload::Binary(data) => (MessageKind::Binary, data),
                 };
-                let length = data.len() as u32;
+                // `stream-message.length` is u32 by contract; the inbound
+                // buffer bound keeps real messages far below it, so an
+                // overflow here is host misconfiguration, not data.
+                let length = u32::try_from(data.len())
+                    .map_err(|_| wasmtime::Error::msg("inbound message exceeds u32::MAX bytes"))?;
                 let data = StreamReader::new(store, data)?;
                 destination.set_buffer(Some(StreamMessage { kind, length, data }));
                 Poll::Ready(Ok(StreamResult::Completed))

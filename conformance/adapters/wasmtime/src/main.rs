@@ -17,7 +17,7 @@ use wasmtime::component::{Accessor, Component, HasData, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_websocket::{WasiWebsocketCtx, WasiWebsocketCtxView, WasiWebsocketView};
 
-use conformance_common::{
+use conformance_adapter_common::{
     default_jobs, file_sha256, run_corpus, unreachable_url, verify_corpus, verify_registry,
     write_report, AdapterReport, RawResult, TestOutcome, CONFORMANCE_CLOSE_TIMEOUT,
     CONFORMANCE_CONNECT_TIMEOUT, CONFORMANCE_MAX_INBOUND_BUFFER_BYTES, TESTS, TEST_TIMEOUT,
@@ -69,7 +69,7 @@ fn build_engine() -> Result<Engine> {
 }
 
 /// A fresh store with the conformance bounds applied (see
-/// `conformance-common` for why each bound exists).
+/// `conformance-adapter-common` for why each bound exists).
 fn new_store(engine: &Engine) -> Store<Ctx> {
     let mut websocket = WasiWebsocketCtx::new();
     websocket.set_connect_timeout(CONFORMANCE_CONNECT_TIMEOUT);
@@ -195,7 +195,7 @@ async fn main() -> Result<()> {
         let base_url = base_url.clone();
         let unreachable = unreachable.clone();
         async move {
-            conformance_common::run_test(test_id, TEST_TIMEOUT, async || {
+            conformance_adapter_common::run_test(test_id, TEST_TIMEOUT, async || {
                 run_instance(
                     engine,
                     component,
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
 
     let failed = results
         .iter()
-        .filter(|r| matches!(r.status, conformance_common::RawStatus::Fail))
+        .filter(|r| matches!(r.status, conformance_adapter_common::RawStatus::Fail))
         .count();
     let report = AdapterReport {
         target: "wasmtime".to_string(),

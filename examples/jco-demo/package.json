@@ -5,10 +5,13 @@
   "type": "module",
   "description": "Node runner for the echo-demo component: jco-transpiled guest against the browser-first host and the suite echo server.",
   "scripts": {
-    "transpile": "jco transpile ../../target/components/echo-demo.wasm --name echo-demo -I async -o generated && node ../../conformance/adapters/jco/patch-jco-string-lowering.mjs generated/echo-demo.js",
+    "transpile": "jco transpile ../../target/components/echo-demo.wasm --name echo-demo -I async -o generated && node ../../scripts/patch-jco-string-lowering.mjs generated/echo-demo.js",
     "start": "node --experimental-wasm-jspi run.mjs"
   },
   "devDependencies": {
     "@bytecodealliance/jco": "^1.26.1"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

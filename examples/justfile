@@ -7,7 +7,7 @@ import '../justfile.shared.just'
 default: test
 
 # Build the echo-demo guest into target/components/echo-demo.wasm.
-component: (build-component "echo-demo" "echo_demo")
+component: (build-component "echo-demo")
 
 # The wasmtime demo, end to end (used by CI).
 test: component build-echod

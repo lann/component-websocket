@@ -15,7 +15,7 @@ default:
 ci: (gha::rust-checks) (gha::conformance-checks)
 
 # Fast pre-commit checks.
-check: fmt-check clippy validate-wit test
+check: fmt-check clippy validate-wit check-js test
 
 fmt-check:
     cargo fmt --all -- --check
@@ -34,6 +34,19 @@ validate-wit:
     wasm-tools component wit conformance/wit >/dev/null
     wasm-tools component wit examples/echo-demo/wit >/dev/null
     @echo "wit: ok"
+
+# Syntax-check the JavaScript trees; nothing else compiles them before a
+# full conformance run would.
+check-js:
+    node --check js/jco/websocket.js
+    node --check conformance/adapters/jco/driver.js
+    node --check conformance/adapters/jco/echod.mjs
+    node --check conformance/adapters/jco/run-node.mjs
+    node --check conformance/adapters/jco/run-browser.mjs
+    node --check conformance/adapters/jco/record-component-hash.mjs
+    node --check examples/jco-demo/run.mjs
+    node --check scripts/patch-jco-string-lowering.mjs
+    @echo "js: ok"
 
 # Native tests (the workspace default-members).
 test:

@@ -7,6 +7,10 @@
 //!
 //! The server is embeddable ([`spawn`]) for in-process adapters and runnable
 //! as a binary (`conformance-echod`) for out-of-process ones.
+//!
+//! The demo runners consume it too; their stable surface is deliberately
+//! small: [`spawn`]/[`RunningServer`], the `/echo` mode, and the binary's
+//! `LISTENING` line. Everything else may change with the tests.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -188,7 +192,7 @@ fn parse_mode(path: &str, query: &str) -> Option<Mode> {
     }
 }
 
-fn plain(status: StatusCode) -> Response<Empty<Bytes>> {
+fn status_only(status: StatusCode) -> Response<Empty<Bytes>> {
     let mut response = Response::new(Empty::new());
     *response.status_mut() = status;
     response
@@ -199,22 +203,22 @@ async fn handle_request(mut req: Request<Incoming>) -> anyhow::Result<Response<E
     let query = req.uri().query().unwrap_or("").to_owned();
 
     if path == "/healthz" {
-        return Ok(plain(StatusCode::OK));
+        return Ok(status_only(StatusCode::OK));
     }
     if path == "/reject" {
         // A well-formed upgrade request answered with a plain HTTP error:
         // the client observes a failed handshake.
-        return Ok(plain(StatusCode::FORBIDDEN));
+        return Ok(status_only(StatusCode::FORBIDDEN));
     }
     if path == "/stall" {
         // Never answer the handshake (bounded so a stuck test cannot leak
         // the socket forever); the client's connect bound must fire first.
         tokio::time::sleep(STALL_HOLD).await;
-        return Ok(plain(StatusCode::INTERNAL_SERVER_ERROR));
+        return Ok(status_only(StatusCode::INTERNAL_SERVER_ERROR));
     }
 
     let Some(mode) = parse_mode(&path, &query) else {
-        return Ok(plain(StatusCode::NOT_FOUND));
+        return Ok(status_only(StatusCode::NOT_FOUND));
     };
 
     // Minimal upgrade validation: enough to serve conforming clients and
@@ -229,7 +233,7 @@ async fn handle_request(mut req: Request<Incoming>) -> anyhow::Result<Response<E
         .get("Sec-WebSocket-Key")
         .map(|v| v.as_bytes().to_owned());
     let (Some(key), true) = (key, is_upgrade) else {
-        return Ok(plain(StatusCode::BAD_REQUEST));
+        return Ok(status_only(StatusCode::BAD_REQUEST));
     };
 
     // Subprotocol selection: `protocol=NAME` selects NAME if the client

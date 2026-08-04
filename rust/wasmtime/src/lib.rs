@@ -35,7 +35,10 @@ mod state_watch;
 mod websocket;
 
 pub use error::{WebsocketError, WebsocketResult};
-pub use websocket::{CloseInfo, Websocket, DEFAULT_MAX_INBOUND_BUFFER_BYTES};
+pub use websocket::{
+    CloseInfo, Websocket, DEFAULT_CLOSE_TIMEOUT, DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_MAX_INBOUND_BUFFER_BYTES,
+};
 
 use wasmtime::component::{HasData, Linker, ResourceTable};
 
@@ -76,7 +79,7 @@ impl WasiWebsocketCtx {
 
     /// Set how long `websocket.connect` waits for the handshake before
     /// failing with `error.connect-failed` (the WIT leaves the bound
-    /// implementation-defined). Default: 30 seconds.
+    /// implementation-defined). Default: [`DEFAULT_CONNECT_TIMEOUT`].
     pub fn set_connect_timeout(&mut self, timeout: std::time::Duration) {
         self.connect_timeout = timeout;
     }
@@ -86,9 +89,10 @@ impl WasiWebsocketCtx {
         self.connect_timeout
     }
 
-    /// Set how long a closing handshake may stay incomplete before the
+    /// Set how long the closing procedure may stay incomplete before the
     /// transport is torn down anyway (the WIT leaves the bound
-    /// implementation-defined). Default: 10 seconds.
+    /// implementation-defined). Also bounds any single stalled transport
+    /// write once closing. Default: [`DEFAULT_CLOSE_TIMEOUT`].
     pub fn set_close_timeout(&mut self, timeout: std::time::Duration) {
         self.close_timeout = timeout;
     }

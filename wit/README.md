@@ -78,15 +78,16 @@ WebSocket close has three distinguishable shapes on this surface:
 
 1. **Local close.** `close(code, reason)` validates its arguments eagerly
    (`invalid-argument` on violation; see the method docs for the bounds),
-   then initiates the closing handshake and returns. The close is observed
-   locally at once: in-flight and subsequent `send`/`receive` calls fail
-   `error.closed`, the resource's streams end, and unread buffered
-   messages are discarded, as are messages the peer sends during the
-   handshake. The closing procedure is bounded end to end: the connection
-   reaches `closed` when the handshake completes, or after an
-   implementation-defined bound when pending sends cannot flush or the
-   peer never completes it. `close` is idempotent; only the first call's
-   frame is sent.
+   then initiates the closing handshake — pending sends flush, then the
+   close frame carrying `code` and `reason` is sent — and returns. The
+   close is observed locally at once: in-flight and subsequent
+   `send`/`receive` calls fail `error.closed`, the resource's streams end,
+   and unread buffered messages are discarded, as are messages the peer
+   sends during the handshake. The closing procedure is bounded end to
+   end: the connection reaches `closed` when the handshake completes, or
+   after an implementation-defined bound when pending sends cannot flush
+   or the peer never completes it. `close` is idempotent; only the first
+   call's frame is sent.
 2. **Remote clean close** (a close frame arrives). Messages the peer sent
    before its close frame remain receivable: `receive` drains the backlog,
    then fails `error.closed`. `wait-closed` resolves `some(close-info)`

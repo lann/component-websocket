@@ -31,7 +31,6 @@ serde_json = "1"
 tokio = "1"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
 toml = "0.8"
-tungstenite = "0.28"
 wasmtime = { version = "47", features = [
     "component-model",
     "component-model-async",

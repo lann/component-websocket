@@ -493,7 +493,23 @@ fn main() -> Result<()> {
         for (id, cell) in &row.cells {
             if cell.is_error() {
                 errors += 1;
-                eprintln!("error: {} / {}: {}", row.target, id, cell.label());
+                let detail = match cell {
+                    Cell::Fail(detail)
+                    | Cell::UndeclaredSkip(detail)
+                    | Cell::UnexpectedPass(detail) => detail.as_str(),
+                    _ => "",
+                };
+                if detail.is_empty() {
+                    eprintln!("error: {} / {}: {}", row.target, id, cell.label());
+                } else {
+                    eprintln!(
+                        "error: {} / {}: {} — {}",
+                        row.target,
+                        id,
+                        cell.label(),
+                        detail
+                    );
+                }
             }
         }
     }
