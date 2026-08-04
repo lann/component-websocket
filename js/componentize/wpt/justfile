@@ -26,6 +26,20 @@ parity: _artifacts
 update-losses: _artifacts
     {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-legs.mjs --update
 
+# The same parity gate inside a headless Chromium (137+ for JSPI): the
+# baseline measures Chromium's own WebSocket, the round trip runs the
+# browser-profile transpile against websocket-jco in the environment it
+# targets. Ratchets separately in parity/losses-chromium.js — a loss set
+# is a fact about one engine's baseline. Currently blocked upstream at the
+# round-trip leg (issue #18); not in CI until that resolves.
+parity-chromium: _artifacts-web
+    {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-browser.mjs
+
+# Re-record parity/losses-chromium.js from an actual Chromium run; same
+# review bar as update-losses. Blocked with parity-chromium (issue #18).
+update-losses-chromium: _artifacts-web
+    {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-browser.mjs --update
+
 # Componentize and transpile the pipeline smoke entry and run it: a fast
 # bisector for toolchain or jco bumps, asserting nothing the parity gate
 # does not, but failing in minutes rather than suites.
@@ -52,6 +66,15 @@ _artifacts: build-echod
     ./js/componentize/wpt/component.sh build
     cd js/componentize/wpt/parity
     npm run -s transpile
+
+# The browser-profile transpile on top of the shared artifacts (the wasi
+# imports map to the preview2-shim browser build; see package.json).
+[private]
+_artifacts-web: _artifacts
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd '{{root}}/js/componentize/wpt/parity'
+    npm run -s transpile:web
 
 [private]
 build-echod:

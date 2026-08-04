@@ -47,12 +47,16 @@ check-js:
     node --check js/componentize/wpt/smoke.js
     node --check js/componentize/wpt/reporter.js
     node --check js/componentize/wpt/parity/deferred-connections.mjs
+    node --check js/componentize/wpt/parity/sockets-stub.mjs
+    node --check js/componentize/wpt/parity/legs.mjs
     node --check js/componentize/wpt/parity/baseline.mjs
     node --check js/componentize/wpt/parity/roundtrip.mjs
     node --check js/componentize/wpt/parity/compare.mjs
     node --check js/componentize/wpt/parity/run-legs.mjs
+    node --check js/componentize/wpt/parity/run-browser.mjs
     node --check js/componentize/wpt/parity/smoke-run.mjs
     node --check conformance/adapters/jco/driver.js
+    node --check conformance/adapters/jco/chrome.mjs
     node --check conformance/adapters/jco/echod.mjs
     node --check conformance/adapters/jco/run-node.mjs
     node --check conformance/adapters/jco/run-browser.mjs

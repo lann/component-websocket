@@ -21,6 +21,7 @@ import { parseArgs } from "node:util";
 
 import { chromium } from "playwright-core";
 
+import { findChrome } from "./chrome.mjs";
 import { spawnEchod, unreachableUrl } from "./echod.mjs";
 
 const ADAPTER_DIR = dirname(fileURLToPath(import.meta.url));
@@ -50,64 +51,6 @@ const { values } = parseArgs({
     jobs: { type: "string" },
   },
 });
-
-// Candidate locations for a Chrome/Chromium binary (137+ for JSPI). CI can
-// override with CHROME_PATH; a playwright-installed Chromium is also
-// discovered.
-async function findChrome() {
-  const platformPaths =
-    process.platform === "darwin"
-      ? [
-          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-          "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        ]
-      : [
-          "/usr/bin/google-chrome",
-          "/usr/bin/google-chrome-stable",
-          "/usr/bin/chromium",
-          "/usr/bin/chromium-browser",
-        ];
-  const explicit = [
-    process.env.CHROME_PATH,
-    process.env.CHROME_BIN,
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    ...platformPaths,
-  ];
-  for (const p of explicit) {
-    if (!p) continue;
-    try {
-      await access(p);
-      return p;
-    } catch {
-      // keep looking
-    }
-  }
-  // A playwright-managed Chromium (newest revision wins).
-  try {
-    const cache = join(
-      process.env.PLAYWRIGHT_BROWSERS_PATH ?? join(process.env.HOME ?? "", ".cache", "ms-playwright"),
-    );
-    const revisions = (await readdir(cache))
-      .filter((name) => /^chromium-\d+$/.test(name))
-      .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]));
-    const suffix =
-      process.platform === "darwin"
-        ? ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"]
-        : ["chrome-linux", "chrome"];
-    for (const revision of revisions) {
-      const candidate = join(cache, revision, ...suffix);
-      try {
-        await access(candidate);
-        return candidate;
-      } catch {
-        // keep looking
-      }
-    }
-  } catch {
-    // no cache
-  }
-  return undefined;
-}
 
 const MIME = {
   ".js": "text/javascript",
