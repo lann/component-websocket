@@ -4,3 +4,4 @@ node_modules/
 /conformance/matrix.md
 build/
 generated/
+generated-smoke/

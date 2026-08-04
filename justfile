@@ -6,6 +6,7 @@ import 'justfile.shared.just'
 mod gha '.github'
 mod conformance
 mod demo 'examples'
+mod wpt 'js/componentize/wpt'
 
 default:
     @just --list
@@ -39,6 +40,18 @@ validate-wit:
 # full conformance run would.
 check-js:
     node --check js/jco/websocket.js
+    node --check js/componentize/websocket.js
+    node --check js/componentize/wpt/harness.js
+    node --check js/componentize/wpt/wpt-env.js
+    node --check js/componentize/wpt/runner.js
+    node --check js/componentize/wpt/smoke.js
+    node --check js/componentize/wpt/reporter.js
+    node --check js/componentize/wpt/parity/deferred-connections.mjs
+    node --check js/componentize/wpt/parity/baseline.mjs
+    node --check js/componentize/wpt/parity/roundtrip.mjs
+    node --check js/componentize/wpt/parity/compare.mjs
+    node --check js/componentize/wpt/parity/run-legs.mjs
+    node --check js/componentize/wpt/parity/smoke-run.mjs
     node --check conformance/adapters/jco/driver.js
     node --check conformance/adapters/jco/echod.mjs
     node --check conformance/adapters/jco/run-node.mjs

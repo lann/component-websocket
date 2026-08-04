@@ -261,10 +261,18 @@ async fn handle_request(mut req: Request<Incoming>) -> anyhow::Result<Response<E
         .collect();
     let selected: Option<String> = if let Some(force) = query_param(&query, "force-protocol") {
         Some(force.to_owned())
+    } else if let Some(want) = query_param(&query, "protocol") {
+        offered
+            .iter()
+            .any(|offer| offer == want)
+            .then(|| want.to_owned())
+    } else if offered.iter().any(|offer| offer == "echo") {
+        // The WPT echo handler's contract: an offer containing exactly
+        // "echo" is accepted as "echo" without any query parameter (the
+        // vendored WPT suites rely on it).
+        Some("echo".to_owned())
     } else {
-        query_param(&query, "protocol")
-            .filter(|want| offered.iter().any(|offer| offer == want))
-            .map(str::to_owned)
+        None
     };
 
     let mut response = Response::new(Empty::new());
@@ -344,7 +352,17 @@ async fn run_mode(mut ws: ServerWs, mode: Mode) {
             loop {
                 match ws.next().await {
                     Some(Ok(message @ (Message::Text(_) | Message::Binary(_)))) => {
+                        // The WPT echo handler's contract: "Goodbye" is
+                        // echoed and then the server initiates a normal
+                        // close (the vendored WPT suites rely on it).
+                        let goodbye =
+                            matches!(&message, Message::Text(text) if text.as_str() == "Goodbye");
                         if ws.send(message).await.is_err() {
+                            break;
+                        }
+                        if goodbye {
+                            let _ = ws.send(Message::Close(close_frame(Some(1000), ""))).await;
+                            drain(&mut ws).await;
                             break;
                         }
                     }

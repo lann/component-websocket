@@ -31,6 +31,10 @@ Layout (each directory's justfile module in parentheses):
 - `js/jco/` — `websocket.js`, the browser-first host module. Its knobs are
   exported functions (`setMaxInboundBufferBytes`, `setConnectTimeoutMs`,
   `setCloseTimeoutMs`); the module reads no ambient configuration.
+- `js/componentize/` (`just wpt::…`) — `websocket.js`, the WHATWG-API
+  shim for componentize-js guests (deviations registry in its header), and
+  the WPT parity gate (`wpt/README.md` is the vendoring policy; losses
+  ratchet in `wpt/parity/losses.js`).
 - `conformance/` (`just conformance`) — guest, echo server
   (`server/PROTOCOL.md` is its wire contract), adapters, runner,
   `tests.toml` + `targets.toml`. The corpus is mirrored in four places

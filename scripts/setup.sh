@@ -52,7 +52,7 @@ if ! have just; then
 fi
 
 if [ "${SKIP_NODE:-}" != "1" ]; then
-    for dir in conformance/adapters/jco examples/jco-demo; do
+    for dir in conformance/adapters/jco examples/jco-demo js/componentize/wpt/parity; do
         if [ -f "$REPO_ROOT/$dir/package.json" ]; then
             (cd "$REPO_ROOT/$dir" && npm install)
         fi
