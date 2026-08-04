@@ -57,6 +57,8 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("close-local", &["close"]),
     ("close-local-default", &["close"]),
     ("close-local-idempotent", &["close"]),
+    ("close-boundary-codes", &["close"]),
+    ("close-reason-unicode", &["close", "errors"]),
     ("close-invalid-code", &["close", "errors"]),
     ("close-reason-too-long", &["close", "errors"]),
     ("close-reason-without-code", &["close", "errors"]),
@@ -73,7 +75,9 @@ const CORPUS: &[(&str, &[&str])] = &[
     ),
     ("state-changes-lifecycle", &["lifecycle"]),
     ("state-changes-take-once", &["lifecycle"]),
+    ("state-changes-late-take", &["lifecycle"]),
     ("wait-closed-latched", &["lifecycle"]),
+    ("wait-closed-pending", &["lifecycle"]),
     ("send-via-stream", &["streaming"]),
     ("receive-via-stream", &["streaming"]),
     ("stream-text-round-trip", &["streaming"]),
@@ -85,6 +89,10 @@ const CORPUS: &[(&str, &[&str])] = &[
     ),
     ("receive-via-stream-once", &["streaming", "errors"]),
     ("receive-via-stream-end-on-close", &["streaming", "close"]),
+    (
+        "receive-via-stream-overflow",
+        &["streaming", "flow-control", "errors"],
+    ),
     ("receive-buffer-overflow", &["flow-control", "errors"]),
     (
         "receive-buffer-overflow-unacknowledged",
@@ -611,6 +619,55 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 None => Err("wait-closed reported an abnormal closure".to_string()),
             }
         }
+        "close-boundary-codes" => {
+            // The sendable range's edges: 3000 and 4999 are accepted and
+            // travel intact (rejections just inside the bounds are
+            // `close-invalid-code`'s rows).
+            for code in [3000u16, 4999] {
+                let ws = connect(config, "/echo", &[]).await?;
+                ws.close(Some(code), "")
+                    .map_err(|e| format!("close({code}): {}", describe(&e)))?;
+                match ws.wait_closed().await {
+                    Some(info) if info.code == code => {}
+                    Some(info) => {
+                        return Err(format!(
+                            "close({code}) acknowledged with code={}",
+                            info.code
+                        ))
+                    }
+                    None => return Err(format!("close({code}) observed as an abnormal closure")),
+                }
+            }
+            Ok(())
+        }
+        "close-reason-unicode" => {
+            // The 123-byte reason bound counts UTF-8 bytes, not code
+            // units: 41 three-byte characters fit exactly and round-trip;
+            // 42 do not.
+            let ws = connect(config, "/echo", &[]).await?;
+            let too_long = "€".repeat(42);
+            match ws.close(Some(4000), &too_long) {
+                Err(Error::InvalidArgument(_)) => {}
+                Ok(()) => return Err("close accepted a 126-byte reason".to_string()),
+                Err(other) => {
+                    return Err(format!(
+                        "expected invalid-argument, got {}",
+                        describe(&other)
+                    ))
+                }
+            }
+            let max = "€".repeat(41);
+            ws.close(Some(4000), &max)
+                .map_err(|e| format!("close with 123-byte unicode reason: {}", describe(&e)))?;
+            match ws.wait_closed().await {
+                Some(info) if info.code == 4000 && info.reason == max => Ok(()),
+                Some(info) => Err(format!(
+                    "unicode reason did not round-trip: code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("wait-closed reported an abnormal closure".to_string()),
+            }
+        }
         "close-invalid-code" => {
             let ws = connect(config, "/echo", &[]).await?;
             for code in [0u16, 999, 1001, 1005, 1006, 1015, 2999, 5000, u16::MAX] {
@@ -863,6 +920,23 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             let _ = ws.close(Some(1000), "");
             Ok(())
         }
+        "state-changes-late-take" => {
+            // The stream is demand-driven: taken (and first read) only
+            // after a close, its first element reflects the state at the
+            // read — never a stale `open` snapshot from take time.
+            let ws = connect(config, "/echo", &[]).await?;
+            ws.close(Some(1000), "")
+                .map_err(|e| format!("close: {}", describe(&e)))?;
+            let _ = ws.wait_closed().await;
+            let states = drain_state_stream(ws.state_changes()).await?;
+            match states.first() {
+                Some(WebsocketState::Open) => {
+                    Err("first element was open although the connection had closed".to_string())
+                }
+                Some(_) => Ok(()),
+                None => Err("state stream ended without any element".to_string()),
+            }
+        }
         "wait-closed-latched" => {
             let ws = connect(config, "/close-after?count=0&code=4009&reason=latch", &[]).await?;
             let first = ws.wait_closed().await;
@@ -874,6 +948,33 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 _ => Err(format!(
                     "wait-closed not latched: first={first:?} second={second:?}"
                 )),
+            }
+        }
+        "wait-closed-pending" => {
+            // `wait-closed` may be awaited before any close exists; the
+            // pending waiter resolves with the eventual acknowledgement.
+            let ws = connect(config, "/echo", &[]).await?;
+            // `join!` polls in order: the wait is pending before the
+            // round-trip and close run.
+            let waiter = ws.wait_closed();
+            let driver = async {
+                let payload = make_payload(0, 32);
+                send(&ws, Message::Binary(payload.clone())).await?;
+                if receive_binary(&ws).await? != payload {
+                    return Err("echo corrupted".to_string());
+                }
+                ws.close(Some(1000), "bye")
+                    .map_err(|e| format!("close: {}", describe(&e)))
+            };
+            let (info, driven) = futures::join!(waiter, driver);
+            driven?;
+            match info {
+                Some(info) if info.code == 1000 && info.reason == "bye" => Ok(()),
+                Some(info) => Err(format!(
+                    "pending wait-closed resolved with code={} reason={:?}",
+                    info.code, info.reason
+                )),
+                None => Err("pending wait-closed reported an abnormal closure".to_string()),
             }
         }
         "send-via-stream" => {
@@ -1232,6 +1333,50 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 )),
                 Ok(()) => Err("send-via-stream succeeded past the close".to_string()),
             }
+        }
+        "receive-via-stream-overflow" => {
+            // An overflow observed through the claimed stream: the backlog
+            // is delivered, then the stream simply ends (the end of a
+            // stream carries no error value, per the streaming contract).
+            let flood_count = (4 * config.max_inbound_buffer_bytes) / 1024;
+            let ws = connect(
+                config,
+                &format!("/burst?count={flood_count}&size=1024"),
+                &[],
+            )
+            .await?;
+            let mut stream = ws
+                .receive_via_stream()
+                .map_err(|e| format!("receive-via-stream: {}", describe(&e)))?;
+            // Wait for the overflow close to land before reading, so the
+            // flood outpaces consumption deterministically.
+            drain_state_stream(ws.state_changes()).await?;
+            let mut received = 0u32;
+            loop {
+                let (status, batch) = stream.read(Vec::with_capacity(1)).await;
+                for message in batch {
+                    let bytes = drain_byte_stream(message.data).await;
+                    if bytes != burst_payload(received, 1024) {
+                        return Err(format!("backlog stream message {received} corrupted"));
+                    }
+                    received += 1;
+                }
+                if matches!(
+                    status,
+                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+                ) {
+                    break;
+                }
+            }
+            if received == 0 {
+                return Err("pre-overflow backlog was not delivered to the stream".to_string());
+            }
+            if received >= flood_count {
+                return Err(format!(
+                    "all {flood_count} flooded messages were delivered; the buffer bound did not engage"
+                ));
+            }
+            Ok(())
         }
         "receive-buffer-overflow" => {
             // Flood 4x the configured bound without receiving; the
