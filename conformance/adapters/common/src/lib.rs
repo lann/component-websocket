@@ -99,6 +99,7 @@ pub const TESTS: &[&str] = &[
     "close-abnormal",
     "receive-backlog-before-close",
     "close-handshake-timeout",
+    "close-under-send-backpressure",
     "state-changes-lifecycle",
     "state-changes-take-once",
     "wait-closed-latched",
@@ -107,6 +108,7 @@ pub const TESTS: &[&str] = &[
     "receive-via-stream-once",
     "receive-via-stream-end-on-close",
     "receive-buffer-overflow",
+    "receive-buffer-overflow-unacknowledged",
 ];
 
 /// Message count/size for count-parameterized tests.

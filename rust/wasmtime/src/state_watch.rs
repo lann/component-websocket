@@ -70,8 +70,13 @@ impl<T: Copy + PartialEq> StateWatch<T> {
         Poll::Pending
     }
 
-    /// Whether the current value is terminal.
-    pub(crate) fn is_terminal_now(&self) -> bool {
-        (self.is_terminal)(&self.inner.lock().unwrap().value)
+    /// Whether `value` is terminal under this watch's predicate.
+    ///
+    /// Callers deciding "deliver vs end the stream" must test the value
+    /// they snapshotted, not the watch's current value: re-reading races a
+    /// concurrent `set` to a terminal state and can end a stream without
+    /// its consumer ever seeing the terminal element.
+    pub(crate) fn is_terminal(&self, value: &T) -> bool {
+        (self.is_terminal)(value)
     }
 }

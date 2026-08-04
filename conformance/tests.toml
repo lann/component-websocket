@@ -170,6 +170,11 @@ tags = ["close", "timeouts"]
 description = "an unanswered close frame still reaches closed within the host's bound"
 
 [[test]]
+id = "close-under-send-backpressure"
+tags = ["close", "flow-control", "timeouts"]
+description = "closing completes within the bound even while large sends stall against a silent peer"
+
+[[test]]
 id = "state-changes-lifecycle"
 tags = ["lifecycle"]
 description = "the state watch starts at open, never repeats or reverses, and ends with terminal closed"
@@ -208,3 +213,8 @@ description = "the inbound stream ends when the server closes; wait-closed carri
 id = "receive-buffer-overflow"
 tags = ["flow-control", "errors"]
 description = "a flood beyond the buffer bound closes the connection; backlog then receive-buffer-overflow"
+
+[[test]]
+id = "receive-buffer-overflow-unacknowledged"
+tags = ["flow-control", "errors", "timeouts"]
+description = "an overflow close the peer never acknowledges still reaches closed; backlog stays receivable and wait-closed reports none"

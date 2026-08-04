@@ -30,8 +30,10 @@ ignored; unknown paths answer HTTP 404.
 | `/close-after?count=N&code=C&reason=R` | Echo `N` messages (default 0), then the server initiates the close with code `C` and reason `R`; `code` omitted sends a code-less close frame (observed as 1005). Drains until the handshake completes. |
 | `/burst-then-close?count=N&size=S&code=C&reason=R` | Immediately send `N` binary messages (default 1) of `S` bytes (default 16), then a close frame as in `/close-after`. |
 | `/burst?count=N&size=S` | Immediately send `N` binary messages of `S` bytes, then keep the connection open, reading and discarding, until the client closes. |
+| `/burst-then-ignore?count=N&size=S` | Immediately send `N` binary messages of `S` bytes, then never read again: the client's close frame goes unanswered (held up to 120 s). The client's closing-handshake bound must fire. |
 | `/abrupt-close?after=N` | Echo `N` messages, then drop the TCP connection without a close frame: the client observes an abnormal closure. |
 | `/ignore-close` | Never speak WebSocket back: every client frame (including its close frame) is read and discarded, and the connection is held open (up to 120 s). The client's closing-handshake bound must fire. |
+| `/blackhole` | Neither read nor write after the upgrade (held up to 120 s): the client's send buffers fill and its writes stall. Probes that the closing procedure stays bounded under send backpressure. |
 
 ## Subprotocol selection
 

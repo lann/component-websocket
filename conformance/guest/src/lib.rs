@@ -67,6 +67,10 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("close-abnormal", &["close"]),
     ("receive-backlog-before-close", &["close", "flow-control"]),
     ("close-handshake-timeout", &["close", "timeouts"]),
+    (
+        "close-under-send-backpressure",
+        &["close", "flow-control", "timeouts"],
+    ),
     ("state-changes-lifecycle", &["lifecycle"]),
     ("state-changes-take-once", &["lifecycle"]),
     ("wait-closed-latched", &["lifecycle"]),
@@ -75,6 +79,10 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("receive-via-stream-once", &["streaming", "errors"]),
     ("receive-via-stream-end-on-close", &["streaming", "close"]),
     ("receive-buffer-overflow", &["flow-control", "errors"]),
+    (
+        "receive-buffer-overflow-unacknowledged",
+        &["flow-control", "errors", "timeouts"],
+    ),
 ];
 
 /// The inbound-buffer bound adapters must configure while running this
@@ -767,6 +775,42 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 )),
             }
         }
+        "close-under-send-backpressure" => {
+            // The server neither reads nor writes, so large sends stall in
+            // the transport. The closing procedure must still complete
+            // within the host's bound: in-flight and queued sends fail
+            // `closed` (or complete), and `wait-closed` reports an
+            // abnormal closure.
+            let ws = connect(config, "/blackhole", &[]).await?;
+            let payload = vec![0xa5u8; 256 * 1024];
+            let sends = futures::future::join_all(
+                (0..64).map(|_| ws.send(Message::Binary(payload.clone()))),
+            );
+            let close_side = async {
+                ws.close(Some(1000), "")
+                    .map_err(|e| format!("close: {}", describe(&e)))?;
+                Ok::<_, String>(ws.wait_closed().await)
+            };
+            let (send_results, closed) = futures::join!(sends, close_side);
+            if let Some(info) = closed? {
+                return Err(format!(
+                    "close against a silent peer produced close-info code={}",
+                    info.code
+                ));
+            }
+            for result in send_results {
+                match result {
+                    Ok(()) | Err(Error::Closed) => {}
+                    Err(other) => {
+                        return Err(format!(
+                            "send under backpressure: expected ok or closed, got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            Ok(())
+        }
         "state-changes-lifecycle" => {
             let ws = connect(config, "/echo", &[]).await?;
             let mut stream = ws.state_changes();
@@ -1023,6 +1067,50 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 ));
             }
             Ok(())
+        }
+        "receive-buffer-overflow-unacknowledged" => {
+            // Same flood, but the server never answers the overflow-driven
+            // close frame: the connection must still reach terminal
+            // `closed` within the host's bound, the backlog must stay
+            // receivable, and `wait-closed` reports an abnormal closure.
+            let flood_count = (4 * ASSUMED_BUFFER_BOUND) / 1024;
+            let ws = connect(
+                config,
+                &format!("/burst-then-ignore?count={flood_count}&size=1024"),
+                &[],
+            )
+            .await?;
+            let states = ws.state_changes();
+            drain_state_stream(states).await?;
+            let mut drained = 0u32;
+            loop {
+                match ws.receive().await {
+                    Ok(Message::Binary(bytes)) => {
+                        if bytes != burst_payload(drained, 1024) {
+                            return Err(format!("backlog message {drained} corrupted"));
+                        }
+                        drained += 1;
+                    }
+                    Ok(Message::String(_)) => return Err("unexpected text message".to_string()),
+                    Err(Error::ReceiveBufferOverflow) => break,
+                    Err(other) => {
+                        return Err(format!(
+                            "expected receive-buffer-overflow after the backlog, got {}",
+                            describe(&other)
+                        ))
+                    }
+                }
+            }
+            if drained == 0 {
+                return Err("pre-overflow backlog was not receivable".to_string());
+            }
+            match ws.wait_closed().await {
+                None => Ok(()),
+                Some(info) => Err(format!(
+                    "unacknowledged overflow close produced close-info code={}",
+                    info.code
+                )),
+            }
         }
         other => Err(format!("unhandled test id {other:?}")),
     }
