@@ -182,10 +182,6 @@ export class Websocket {
   #localClosed = false;
   /** Set once `receive-via-stream` has claimed the inbound messages. */
   #streamClaimed = false;
-  /** Take-once claim for `state-changes`. */
-  #stateTaken = false;
-  /** Wake callbacks for the state watch. */
-  #statePokes = new Set();
   /** The settled `wait-closed` value (`undefined` until settled). */
   #closeSettled = false;
   #closeInfo = undefined;
@@ -413,23 +409,11 @@ export class Websocket {
   }
 
   /**
-   * A stream of lifecycle states: a coalescing watch whose first element
-   * reflects the state at the first read, ending after the terminal
-   * `closed`. Take-once: later calls return a stream that ends
-   * immediately.
+   * The connection's current lifecycle state: `'open' | 'closing' |
+   * 'closed'`. `closed` is terminal and latched.
    */
-  stateChanges() {
-    if (this.#stateTaken) return emptyStream();
-    this.#stateTaken = true;
-    return stateStream(
-      () => this.#currentState(),
-      (wake) => {
-        this.#ws.addEventListener("close", wake);
-        this.#ws.addEventListener("error", wake);
-        this.#statePokes.add(wake);
-      },
-      (state) => state === "closed",
-    );
+  state() {
+    return this.#currentState();
   }
 
   /**
@@ -454,7 +438,6 @@ export class Websocket {
     if (this.#localClosed) return;
     this.#localClosed = true;
     this.#incoming.discard();
-    this.#pokeState();
     // The resource settles as closed within the close bound even when the
     // peer never acknowledges; the browser owns the socket's own fate.
     this.#closeDeadline = setTimeout(() => this.#settleClosed(null), closeTimeoutMs);
@@ -496,7 +479,6 @@ export class Websocket {
     if (!this.#closeSettled && this.#closeDeadline === null) {
       this.#closeDeadline = setTimeout(() => this.#settleClosed(null), closeTimeoutMs);
     }
-    this.#pokeState();
   }
 
   #currentState() {
@@ -510,11 +492,6 @@ export class Websocket {
       default:
         return "open";
     }
-  }
-
-  /** Wake the state watch to re-derive `#currentState`. */
-  #pokeState() {
-    for (const poke of this.#statePokes) poke();
   }
 
   /**
@@ -538,7 +515,6 @@ export class Websocket {
     } else {
       this.#closeInfo = undefined;
     }
-    this.#pokeState();
     const waiters = this.#closeWaiters;
     this.#closeWaiters = [];
     for (const resolve of waiters) resolve(this.#closeInfo);
@@ -546,57 +522,6 @@ export class Websocket {
 }
 
 // ----- helpers ---------------------------------------------------------------
-
-/** A `ReadableStream` that ends immediately without yielding anything. */
-function emptyStream() {
-  return new ReadableStream({
-    start(controller) {
-      controller.close();
-    },
-  });
-}
-
-/**
- * A pull-based coalescing state watch backing `state-changes`: each element
- * is `current()` at the time it is produced (the first element reflects the
- * state at the first read), consecutive elements are distinct, and the
- * stream closes after a terminal state. `subscribe` registers a wake
- * callback for potential state changes and is called once.
- */
-function stateStream(current, subscribe, isTerminal) {
-  let delivered;
-  let notify = null;
-  subscribe(() => {
-    if (notify) {
-      const wake = notify;
-      notify = null;
-      wake();
-    }
-  });
-  return new ReadableStream({
-    async pull(controller) {
-      for (;;) {
-        // Arm the wake before checking, so a transition between the check
-        // and the wait is not missed.
-        const woken = new Promise((resolve) => {
-          notify = resolve;
-        });
-        const state = current();
-        if (state !== delivered) {
-          delivered = state;
-          controller.enqueue(state);
-          if (isTerminal(state)) controller.close();
-          return;
-        }
-        if (isTerminal(state)) {
-          controller.close();
-          return;
-        }
-        await woken;
-      }
-    },
-  });
-}
 
 /**
  * Build a per-message inbound queue over `ws`. Each received message is

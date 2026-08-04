@@ -70,9 +70,9 @@ The package defines two interfaces (see [`wit/websocket.wit`](wit/websocket.wit)
     pipelining;
   - `send-via-stream`/`receive-via-stream` carry each message's payload as
     a byte `stream` to bound in-guest buffering;
-  - `state-changes` is a coalescing lifecycle watch; `wait-closed` is the
-    latched authority for close details (the peer's close frame, or `none`
-    for an abnormal closure);
+  - `state` is the lifecycle getter (mirroring the poll-only W3C
+    `readyState`); `wait-closed` is the latched authority for close
+    details (the peer's close frame, or `none` for an abnormal closure);
   - `close(code, reason)` validates eagerly against the codes a browser
     client may send and initiates the closing handshake.
 

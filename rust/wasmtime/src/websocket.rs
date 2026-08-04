@@ -21,7 +21,6 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::{self, Message as WsMessage};
 
 use crate::error::{WebsocketError, WebsocketResult};
-use crate::state_watch::StateWatch;
 
 /// The default bound on inbound payload bytes buffered per connection while
 /// waiting for the guest to `receive` them.
@@ -54,13 +53,42 @@ pub struct CloseInfo {
 }
 
 /// The connection lifecycle as observed by the host, backing
-/// `websocket.state-changes` (mapped onto the WIT `websocket-state` at the
-/// binding layer). `Closed` is terminal.
+/// `websocket.state` (mapped onto the WIT `websocket-state` at the binding
+/// layer). `Closed` is terminal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WsState {
     Open,
     Closing,
     Closed,
+}
+
+/// The lifecycle cell: state only ever advances (`Open` -> `Closing` ->
+/// `Closed`), and `Closed` latches.
+pub(crate) struct StateCell(Mutex<WsState>);
+
+impl StateCell {
+    fn new() -> Self {
+        Self(Mutex::new(WsState::Open))
+    }
+
+    /// Advance to `next` if that is forward progress; regressions and
+    /// post-terminal transitions are ignored.
+    pub(crate) fn advance(&self, next: WsState) {
+        let mut state = self.0.lock().unwrap();
+        let allowed = matches!(
+            (*state, next),
+            (WsState::Open, WsState::Closing)
+                | (WsState::Open, WsState::Closed)
+                | (WsState::Closing, WsState::Closed)
+        );
+        if allowed {
+            *state = next;
+        }
+    }
+
+    pub(crate) fn get(&self) -> WsState {
+        *self.0.lock().unwrap()
+    }
 }
 
 /// A single WebSocket data message payload, direction-neutral: the pump
@@ -211,8 +239,8 @@ enum Cmd {
 
 /// State shared between the pump task and the resource's methods.
 struct ConnShared {
-    /// The lifecycle watch backing `state-changes`.
-    state: Arc<StateWatch<WsState>>,
+    /// The lifecycle cell backing `websocket.state`.
+    state: StateCell,
     /// The peer's close frame, if one was received. Set exactly once, before
     /// `closed` fires.
     close_info: OnceLock<Option<CloseInfo>>,
@@ -246,8 +274,6 @@ pub struct Websocket {
     /// Resolves once `receive-via-stream` is called, so pending `receive`
     /// calls can be woken and fail with `receiving-via-stream`.
     stream_started: Shared<oneshot::Receiver<()>>,
-    /// Take-once claim for `state-changes` (the WIT contract).
-    state_taken: Arc<AtomicBool>,
 }
 
 /// Per-connection configuration snapshotted from the context at `connect`.
@@ -408,9 +434,7 @@ impl Websocket {
         let budget = Arc::new(InboundBudget::new(config.max_inbound_buffer_bytes));
         let (closed_trigger, closed) = signal();
         let shared = Arc::new(ConnShared {
-            state: Arc::new(StateWatch::new(WsState::Open, |s| {
-                matches!(s, WsState::Closed)
-            })),
+            state: StateCell::new(),
             close_info: OnceLock::new(),
             closed,
         });
@@ -440,7 +464,6 @@ impl Websocket {
             stream_receiving: Arc::new(AtomicBool::new(false)),
             stream_started_tx: Arc::new(Mutex::new(Some(started_tx))),
             stream_started: started_rx.shared(),
-            state_taken: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -455,7 +478,7 @@ impl Websocket {
         if self.local_closed.is_fired() {
             return Ok(());
         }
-        self.shared.state.set(WsState::Closing);
+        self.shared.state.advance(WsState::Closing);
         self.local_close_trigger.fire();
         let _ = self.cmd_tx.send(Cmd::Close { code, reason });
         Ok(())
@@ -486,14 +509,9 @@ impl Websocket {
         ClosedHandle(self.shared.clone())
     }
 
-    /// The connection's lifecycle watch, backing `state-changes`.
-    pub(crate) fn state_watch(&self) -> Arc<StateWatch<WsState>> {
-        self.shared.state.clone()
-    }
-
-    /// Claim `state-changes` (take-once): `true` for the first caller only.
-    pub(crate) fn take_state_stream(&self) -> bool {
-        !self.state_taken.swap(true, Ordering::SeqCst)
+    /// The connection's current lifecycle state (`websocket.state`).
+    pub(crate) fn state(&self) -> WsState {
+        self.shared.state.get()
     }
 
     /// Claim the inbound messages for `receive-via-stream`: `true` for the
@@ -679,7 +697,7 @@ impl Pump {
                         if self.peer_frame.is_none() {
                             self.peer_frame = Some(close_info_from(frame));
                         }
-                        self.shared.state.set(WsState::Closing);
+                        self.shared.state.advance(WsState::Closing);
                         self.arm_deadline();
                         if !self.wire_closing {
                             self.wire_closing = true;
@@ -722,8 +740,8 @@ impl Pump {
                 let _ = ack.send(Err(WebsocketError::Closed));
             }
         }
-        self.shared.state.set(WsState::Closing);
-        self.shared.state.set(WsState::Closed);
+        self.shared.state.advance(WsState::Closing);
+        self.shared.state.advance(WsState::Closed);
         closed_trigger.fire();
     }
 
@@ -786,7 +804,7 @@ impl Pump {
             return;
         }
         self.wire_closing = true;
-        self.shared.state.set(WsState::Closing);
+        self.shared.state.advance(WsState::Closing);
         self.arm_deadline();
         let _ = self.bounded_write(ws.send(WsMessage::Close(frame))).await;
     }
