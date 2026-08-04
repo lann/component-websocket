@@ -1077,17 +1077,14 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             let mut got: Option<(MessageKind, Vec<u8>)> = None;
             while got.is_none() {
                 let (status, batch) = stream.read(Vec::with_capacity(1)).await;
-                for message in batch {
+                if let Some(message) = batch.into_iter().next() {
                     let kind = message.kind;
                     let data = drain_byte_stream(message.data).await;
                     got = Some((kind, data));
-                    break;
-                }
-                if matches!(
+                } else if matches!(
                     status,
                     wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
-                ) && got.is_none()
-                {
+                ) {
                     return Err("stream ended before the text message".to_string());
                 }
             }
