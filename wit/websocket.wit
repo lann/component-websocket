@@ -298,7 +298,8 @@ interface connections {
         /// buffered but not yet received when `close` is called are
         /// discarded, as are messages the peer sends during the closing
         /// handshake — a guest that wants them must receive them first.
-        /// If the peer never completes the closing handshake, the
+        /// The closing procedure is bounded end to end: if pending sends
+        /// cannot flush, or the peer never completes the handshake, the
         /// connection still reaches `closed` after an
         /// implementation-defined bound. Dropping the resource without
         /// calling `close` implies `close(none, "")`.

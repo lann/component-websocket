@@ -44,6 +44,7 @@ export const TESTS = [
   "close-abnormal",
   "receive-backlog-before-close",
   "close-handshake-timeout",
+  "close-under-send-backpressure",
   "state-changes-lifecycle",
   "state-changes-take-once",
   "wait-closed-latched",
@@ -52,6 +53,7 @@ export const TESTS = [
   "receive-via-stream-once",
   "receive-via-stream-end-on-close",
   "receive-buffer-overflow",
+  "receive-buffer-overflow-unacknowledged",
 ];
 
 /** The `[messageCount, messageSize]` a test runs with. */

@@ -122,10 +122,15 @@ enum Mode {
         count: u32,
         size: u32,
     },
+    BurstThenIgnore {
+        count: u32,
+        size: u32,
+    },
     AbruptClose {
         after: u32,
     },
     IgnoreClose,
+    Blackhole,
 }
 
 /// Query parameters, parsed without percent-decoding (the protocol keeps
@@ -162,10 +167,15 @@ fn parse_mode(path: &str, query: &str) -> Option<Mode> {
             count: int("count", 1),
             size: int("size", 16),
         }),
+        "/burst-then-ignore" => Some(Mode::BurstThenIgnore {
+            count: int("count", 1),
+            size: int("size", 16),
+        }),
         "/abrupt-close" => Some(Mode::AbruptClose {
             after: int("after", 0),
         }),
         "/ignore-close" => Some(Mode::IgnoreClose),
+        "/blackhole" => Some(Mode::Blackhole),
         _ => None,
     }
 }
@@ -259,6 +269,13 @@ async fn handle_request(mut req: Request<Incoming>) -> anyhow::Result<Response<E
             // Raw mode: never speak WebSocket back, so the client's close
             // frame goes deliberately unanswered.
             run_ignore_close(io).await;
+            return;
+        }
+        if matches!(mode, Mode::Blackhole) {
+            // Raw mode: neither read nor write, so the peer's send buffers
+            // fill and its writes stall. Bounded so a stuck test cannot
+            // leak the socket forever.
+            tokio::time::sleep(IGNORE_CLOSE_HOLD).await;
             return;
         }
         let ws = WebSocketStream::from_raw_socket(io, Role::Server, None).await;
@@ -367,6 +384,21 @@ async fn run_mode(mut ws: ServerWs, mode: Mode) {
             }
             drain(&mut ws).await;
         }
+        Mode::BurstThenIgnore { count, size } => {
+            for index in 0..count {
+                if ws
+                    .send(Message::binary(burst_payload(index, size)))
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            // Never read again: the client's close frame goes unanswered
+            // (reading it would trigger tungstenite's automatic close
+            // reply). Bounded so a stuck test cannot leak the socket.
+            tokio::time::sleep(IGNORE_CLOSE_HOLD).await;
+        }
         Mode::AbruptClose { after } => {
             let mut echoed = 0;
             while echoed < after {
@@ -384,7 +416,7 @@ async fn run_mode(mut ws: ServerWs, mode: Mode) {
             // Drop without a close frame: the client observes an abnormal
             // closure (TCP FIN with no closing handshake).
         }
-        Mode::IgnoreClose => unreachable!("handled at the raw layer"),
+        Mode::IgnoreClose | Mode::Blackhole => unreachable!("handled at the raw layer"),
     }
 }
 

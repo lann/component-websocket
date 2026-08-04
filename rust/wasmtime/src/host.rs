@@ -27,9 +27,7 @@ use crate::bindings::websocket::types::{
 };
 use crate::error::WebsocketError;
 use crate::state_watch::StateWatch;
-use crate::websocket::{
-    next_inbound, ConnectConfig, InboundMessage, InboundQueue, Signal, WsState,
-};
+use crate::websocket::{next_inbound, ConnectConfig, InboundQueue, Payload, Signal, WsState};
 use crate::{WasiWebsocket, WasiWebsocketCtxView, Websocket};
 
 impl From<WebsocketError> for Error {
@@ -55,17 +53,17 @@ impl From<crate::websocket::CloseInfo> for CloseInfo {
     }
 }
 
-fn to_wit_message(inbound: InboundMessage) -> Message {
+fn to_wit_message(inbound: Payload) -> Message {
     match inbound {
-        InboundMessage::Text(text) => Message::String(text),
-        InboundMessage::Binary(data) => Message::Binary(data),
+        Payload::Text(text) => Message::String(text),
+        Payload::Binary(data) => Message::Binary(data),
     }
 }
 
-fn to_inbound(message: Message) -> InboundMessage {
+fn to_payload(message: Message) -> Payload {
     match message {
-        Message::String(text) => InboundMessage::Text(text),
-        Message::Binary(data) => InboundMessage::Binary(data),
+        Message::String(text) => Payload::Text(text),
+        Message::Binary(data) => Payload::Binary(data),
     }
 }
 
@@ -182,7 +180,7 @@ struct InboundStreamMessages {
     /// A future resolving to the next inbound message (or `None` once the
     /// connection is closed), retained across polls so the shared receiver
     /// lock is only held while awaiting the next message.
-    pending: Option<Pin<Box<dyn Future<Output = Option<InboundMessage>> + Send>>>,
+    pending: Option<Pin<Box<dyn Future<Output = Option<Payload>> + Send>>>,
 }
 
 impl<D: Send + 'static> StreamProducer<D> for InboundStreamMessages {
@@ -209,8 +207,13 @@ impl<D: Send + 'static> StreamProducer<D> for InboundStreamMessages {
                 .fuse());
                 let mut closed = std::pin::pin!(local_closed.fired().fuse());
                 futures::select_biased! {
-                    message = next => message,
+                    // The close signal is polled first: a message landing
+                    // in the gap between a local close firing and this task
+                    // waking must not be delivered past the close (the
+                    // backlog is discarded at once, per the close
+                    // contract).
                     _ = closed => None,
+                    message = next => message,
                 }
             })
         });
@@ -230,8 +233,8 @@ impl<D: Send + 'static> StreamProducer<D> for InboundStreamMessages {
             Poll::Ready(Some(inbound)) => {
                 this.pending = None;
                 let (kind, data) = match inbound {
-                    InboundMessage::Text(text) => (MessageKind::String, text.into_bytes()),
-                    InboundMessage::Binary(data) => (MessageKind::Binary, data),
+                    Payload::Text(text) => (MessageKind::String, text.into_bytes()),
+                    Payload::Binary(data) => (MessageKind::Binary, data),
                 };
                 let length = data.len() as u32;
                 let data = StreamReader::new(store, data)?;
@@ -347,15 +350,22 @@ impl<D: Send + 'static> StreamProducer<D> for StateChanges {
         match this.delivered {
             // Already delivered this version: the stream ends after the
             // terminal state, otherwise wait for the next change.
+            // Terminality is tested on the snapshotted value: re-reading
+            // the watch here would race a concurrent transition to
+            // terminal and end the stream without delivering it.
             Some(seen) if seen == version => {
-                if watch.is_terminal_now() {
+                if watch.is_terminal(&value) {
                     return Poll::Ready(Ok(StreamResult::Dropped));
                 }
                 match watch.poll_changed(seen, cx) {
                     Poll::Ready(_) => {
-                        // Changed between `current` and here; re-poll.
-                        cx.waker().wake_by_ref();
-                        Poll::Pending
+                        if finish {
+                            Poll::Ready(Ok(StreamResult::Cancelled))
+                        } else {
+                            // Changed between `current` and here; re-poll.
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
+                        }
                     }
                     Poll::Pending => {
                         if finish {
@@ -410,7 +420,7 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
         let handle = accessor.with(|mut access| {
             Ok::<_, wasmtime::Error>(access.get().table.get(&self_)?.send_handle())
         })?;
-        Ok(handle.send(to_inbound(message)).await.map_err(Error::from))
+        Ok(handle.send(to_payload(message)).await.map_err(Error::from))
     }
 
     async fn receive(
@@ -444,16 +454,15 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
         // `receive-via-stream` being called and against a local close: a
         // pending receiver is woken and fails with `receiving-via-stream`
         // the moment the stream is claimed, or with `closed` on a local
-        // close. Biased order: an already-available message wins over the
-        // signals.
+        // close.
         let mut receive = std::pin::pin!(next_inbound(incoming).fuse());
         let mut started = std::pin::pin!(stream_started.fuse());
         let mut local = std::pin::pin!(local_closed.fired().fuse());
+        // The signal arms are polled before the receive arm: a message
+        // landing in the gap between a signal firing and this task waking
+        // must not be stolen from the claimed stream (or delivered past a
+        // local close, whose contract discards the backlog at once).
         Ok(futures::select_biased! {
-            result = receive => match result {
-                Ok(inbound) => Ok(to_wit_message(inbound)),
-                Err(err) => Err(err.into()),
-            },
             // The stream-started signal fired; when it was actually sent
             // (rather than cancelled by the resource dropping) report the
             // takeover.
@@ -465,6 +474,10 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
                 }
             }
             _ = local => Err(Error::Closed),
+            result = receive => match result {
+                Ok(inbound) => Ok(to_wit_message(inbound)),
+                Err(err) => Err(err.into()),
+            },
         })
     }
 
@@ -522,7 +535,7 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
             }
             let message = if pending.is_string {
                 match String::from_utf8(payload.data) {
-                    Ok(text) => InboundMessage::Text(text),
+                    Ok(text) => Payload::Text(text),
                     Err(err) => {
                         return Ok(Err(SendViaStreamError {
                             error: WebsocketError::Other(format!(
@@ -534,7 +547,7 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
                     }
                 }
             } else {
-                InboundMessage::Binary(payload.data)
+                Payload::Binary(payload.data)
             };
             let mut send = std::pin::pin!(handle.send(message).fuse());
             futures::select_biased! {

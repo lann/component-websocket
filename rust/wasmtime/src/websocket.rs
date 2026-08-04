@@ -63,15 +63,16 @@ pub(crate) enum WsState {
     Closed,
 }
 
-/// A single inbound message, preserving the text/binary distinction.
-pub(crate) enum InboundMessage {
+/// A single WebSocket data message payload, direction-neutral: the pump
+/// sends them outbound and the inbound queue delivers them.
+pub(crate) enum Payload {
     /// A text message (valid UTF-8, validated by tungstenite).
     Text(String),
     /// A binary message.
     Binary(Vec<u8>),
 }
 
-impl InboundMessage {
+impl Payload {
     pub(crate) fn payload_len(&self) -> usize {
         match self {
             Self::Text(text) => text.len(),
@@ -126,7 +127,7 @@ impl InboundBudget {
 /// A connection's inbound-message queue: the receiving half of the pump's
 /// message stream plus the shared [`InboundBudget`] its consumption releases.
 pub(crate) struct InboundQueue {
-    rx: fmpsc::UnboundedReceiver<InboundMessage>,
+    rx: fmpsc::UnboundedReceiver<Payload>,
     budget: Arc<InboundBudget>,
 }
 
@@ -134,7 +135,7 @@ impl InboundQueue {
     /// The next buffered message, or `None` once the pump has stopped (the
     /// connection closed or its inbound buffer overflowed) and the backlog
     /// is drained. Releases the message's bytes from the budget.
-    pub(crate) async fn next(&mut self) -> Option<InboundMessage> {
+    pub(crate) async fn next(&mut self) -> Option<Payload> {
         let message = self.rx.next().await?;
         self.budget.release(message.payload_len());
         Some(message)
@@ -199,7 +200,7 @@ pub(crate) fn signal() -> (SignalTrigger, Signal) {
 /// Outbound work handed to the pump task.
 enum Cmd {
     Send {
-        message: InboundMessage,
+        message: Payload,
         ack: oneshot::Sender<WebsocketResult<()>>,
     },
     Close {
@@ -416,15 +417,18 @@ impl Websocket {
         let (local_close_trigger, local_closed) = signal();
         let (started_tx, started_rx) = oneshot::channel();
 
-        tokio::spawn(pump(
-            ws,
-            cmd_rx,
+        let pump = Pump {
             in_tx,
-            budget.clone(),
-            shared.clone(),
-            closed_trigger,
-            config.close_timeout,
-        ));
+            budget: budget.clone(),
+            shared: shared.clone(),
+            local_closed: local_closed.clone(),
+            close_timeout: config.close_timeout,
+            wire_closing: false,
+            write_dead: false,
+            peer_frame: None,
+            deadline: None,
+        };
+        tokio::spawn(pump.run(ws, cmd_rx, closed_trigger));
 
         Ok(Websocket {
             protocol: negotiated,
@@ -528,7 +532,7 @@ pub(crate) struct SendHandle {
 impl SendHandle {
     /// Hand one message to the pump, resolving once it reaches the
     /// transport.
-    pub(crate) async fn send(&self, message: InboundMessage) -> WebsocketResult<()> {
+    pub(crate) async fn send(&self, message: Payload) -> WebsocketResult<()> {
         if self.local_closed.is_fired() {
             return Err(WebsocketError::Closed);
         }
@@ -576,7 +580,7 @@ impl Drop for Websocket {
 /// end onto the WIT error taxonomy.
 pub(crate) async fn next_inbound(
     incoming: Arc<AsyncMutex<InboundQueue>>,
-) -> WebsocketResult<InboundMessage> {
+) -> WebsocketResult<Payload> {
     let mut queue = incoming.lock().await;
     match queue.next().await {
         Some(message) => Ok(message),
@@ -585,193 +589,234 @@ pub(crate) async fn next_inbound(
     }
 }
 
-/// The pump task: owns the socket, serializes outbound work, and feeds the
-/// inbound queue. See the module docs.
-async fn pump(
-    mut ws: tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-    mut cmd_rx: mpsc::UnboundedReceiver<Cmd>,
-    in_tx: fmpsc::UnboundedSender<InboundMessage>,
+type Ws =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// The pump task's per-connection state, minus the socket itself (which
+/// [`Pump::run`] keeps as a local so the select's read future and the arm
+/// bodies borrow disjoint values).
+///
+/// Every transport write is bounded: while the connection is open a write
+/// races the local-close signal (so a stalled transport can never block the
+/// closing procedure), and once closing begins every write races the close
+/// deadline. A failed or stalled write marks the write half dead — the pump
+/// then keeps *reading* until the deadline, so a close frame the peer
+/// already sent is still captured rather than misreported as an abnormal
+/// closure.
+struct Pump {
+    in_tx: fmpsc::UnboundedSender<Payload>,
     budget: Arc<InboundBudget>,
     shared: Arc<ConnShared>,
-    closed_trigger: SignalTrigger,
+    /// Fired by a local `close()` (or drop); bounds in-flight writes the
+    /// moment a close is requested.
+    local_closed: Signal,
     close_timeout: Duration,
-) {
-    // Whether a close frame has been sent or received: sends fail `closed`
-    // and inbound data messages are discarded from that point on.
-    let mut wire_closing = false;
-    // Whether the guest (or an overflow) initiated the close, versus the
-    // peer.
-    let mut peer_frame: Option<CloseInfo> = None;
-    // Once closing, bounds how long the handshake may take to complete.
-    let mut deadline: Option<tokio::time::Instant> = None;
-    // Set once `cmd_rx` has returned `None` (the resource dropped), so the
-    // exhausted channel is not polled again.
-    let mut cmds_done = false;
+    /// A close frame has been sent or received: sends fail `closed` and
+    /// inbound data messages are discarded from this point on.
+    wire_closing: bool,
+    /// The write half failed or stalled out: nothing further is written,
+    /// and the pump keeps reading until the deadline tears it down.
+    write_dead: bool,
+    /// The peer's close frame, if one was received.
+    peer_frame: Option<CloseInfo>,
+    /// Once closing, bounds how long teardown may take.
+    deadline: Option<tokio::time::Instant>,
+}
 
-    loop {
-        tokio::select! {
-            biased;
-            cmd = cmd_rx.recv(), if !cmds_done => match cmd {
-                Some(Cmd::Send { message, ack }) => {
-                    if wire_closing {
-                        let _ = ack.send(Err(WebsocketError::Closed));
-                        continue;
+impl Pump {
+    /// Own the socket, serialize outbound work, and feed the inbound
+    /// queue until the connection is torn down. See the module docs.
+    async fn run(
+        mut self,
+        mut ws: Ws,
+        mut cmd_rx: mpsc::UnboundedReceiver<Cmd>,
+        closed_trigger: SignalTrigger,
+    ) {
+        // Set once `cmd_rx` has returned `None` (the resource dropped), so
+        // the exhausted channel is not polled again.
+        let mut cmds_done = false;
+
+        loop {
+            // A local copy so the deadline arm does not borrow `self` while
+            // the arm bodies mutate it.
+            let deadline = self.deadline;
+            tokio::select! {
+                biased;
+                cmd = cmd_rx.recv(), if !cmds_done => match cmd {
+                    Some(Cmd::Send { message, ack }) => {
+                        if self.wire_closing || self.write_dead {
+                            let _ = ack.send(Err(WebsocketError::Closed));
+                            continue;
+                        }
+                        let msg = match message {
+                            Payload::Text(text) => WsMessage::text(text),
+                            Payload::Binary(data) => WsMessage::binary(data),
+                        };
+                        let result = self.bounded_write(ws.send(msg)).await;
+                        let _ = ack.send(result);
                     }
-                    let msg = match message {
-                        InboundMessage::Text(text) => WsMessage::text(text),
-                        InboundMessage::Binary(data) => WsMessage::binary(data),
-                    };
-                    let result = ws.send(msg).await.map_err(|err| match err {
-                        tungstenite::Error::ConnectionClosed
-                        | tungstenite::Error::AlreadyClosed
-                        | tungstenite::Error::Protocol(
-                            tungstenite::error::ProtocolError::SendAfterClosing,
-                        ) => WebsocketError::Closed,
-                        other => WebsocketError::other(other),
-                    });
-                    let failed = result.is_err();
-                    let _ = ack.send(result);
-                    if failed {
-                        // A failed write means the transport is unusable;
-                        // stop pumping (readers drain the backlog).
-                        break;
-                    }
-                }
-                Some(Cmd::Close { code, reason }) => {
-                    if !wire_closing {
-                        wire_closing = true;
+                    Some(Cmd::Close { code, reason }) => {
                         let frame = code.map(|code| CloseFrame {
                             code: code.into(),
                             reason: reason.into(),
                         });
-                        let _ = ws.send(WsMessage::Close(frame)).await;
-                        deadline = Some(tokio::time::Instant::now() + close_timeout);
+                        self.begin_close(&mut ws, frame).await;
                     }
-                }
-                None => {
-                    // The resource dropped: drop-implies-close.
-                    cmds_done = true;
-                    if !wire_closing {
-                        wire_closing = true;
-                        let _ = ws.send(WsMessage::Close(None)).await;
-                        deadline = Some(tokio::time::Instant::now() + close_timeout);
+                    None => {
+                        // The resource dropped: drop-implies-close.
+                        cmds_done = true;
+                        self.begin_close(&mut ws, None).await;
                     }
-                }
-            },
-            msg = ws.next() => match msg {
-                Some(Ok(WsMessage::Text(text))) => {
-                    deliver(
-                        InboundMessage::Text(text.as_str().to_owned()),
-                        wire_closing,
-                        &budget,
-                        &in_tx,
-                        &mut ws,
-                        &mut deadline,
-                        close_timeout,
-                        &shared,
-                        &mut wire_closing,
-                    )
-                    .await;
-                }
-                Some(Ok(WsMessage::Binary(data))) => {
-                    deliver(
-                        InboundMessage::Binary(data.to_vec()),
-                        wire_closing,
-                        &budget,
-                        &in_tx,
-                        &mut ws,
-                        &mut deadline,
-                        close_timeout,
-                        &shared,
-                        &mut wire_closing,
-                    )
-                    .await;
-                }
-                Some(Ok(WsMessage::Close(frame))) => {
-                    if peer_frame.is_none() {
-                        peer_frame = Some(close_info_from(frame));
+                },
+                msg = ws.next() => match msg {
+                    Some(Ok(WsMessage::Text(text))) => {
+                        self.deliver(&mut ws, Payload::Text(text.as_str().to_owned())).await;
                     }
-                    shared.state.set(WsState::Closing);
-                    if !wire_closing {
-                        wire_closing = true;
-                        // tungstenite queues the close reply automatically;
-                        // flush it so the handshake completes.
-                        let _ = ws.flush().await;
+                    Some(Ok(WsMessage::Binary(data))) => {
+                        self.deliver(&mut ws, Payload::Binary(data.to_vec())).await;
                     }
-                    if deadline.is_none() {
-                        deadline = Some(tokio::time::Instant::now() + close_timeout);
+                    Some(Ok(WsMessage::Close(frame))) => {
+                        if self.peer_frame.is_none() {
+                            self.peer_frame = Some(close_info_from(frame));
+                        }
+                        self.shared.state.set(WsState::Closing);
+                        self.arm_deadline();
+                        if !self.wire_closing {
+                            self.wire_closing = true;
+                            // tungstenite queues the close reply
+                            // automatically; flush it (bounded) so the
+                            // handshake completes.
+                            let _ = self.bounded_write(ws.flush()).await;
+                        }
                     }
+                    Some(Ok(WsMessage::Ping(_))) => {
+                        // tungstenite queues the pong automatically; flush it.
+                        let _ = self.bounded_write(ws.flush()).await;
+                    }
+                    Some(Ok(_)) => {}
+                    // A read error or EOF is the transport's verdict either
+                    // way; `peer_frame` already records whether a close
+                    // frame arrived first.
+                    Some(Err(_)) | None => break,
+                },
+                _ = async {
+                    match deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // The closing procedure did not complete within the
+                    // bound; tear the transport down.
+                    break;
                 }
-                Some(Ok(WsMessage::Ping(_))) => {
-                    // tungstenite queues the pong automatically; flush it.
-                    let _ = ws.flush().await;
-                }
-                Some(Ok(_)) => {}
-                Some(Err(tungstenite::Error::ConnectionClosed)) | None => break,
-                Some(Err(_)) => break,
-            },
-            _ = async {
-                match deadline {
-                    Some(deadline) => tokio::time::sleep_until(deadline).await,
-                    None => std::future::pending().await,
-                }
-            } => {
-                // The peer never completed the closing handshake within the
-                // bound; tear the transport down.
-                break;
             }
         }
+
+        // Finalize: publish the close outcome, end the inbound queue
+        // (readers drain the backlog first), and fail any queued sends.
+        let _ = self.shared.close_info.set(self.peer_frame);
+        drop(self.in_tx);
+        cmd_rx.close();
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            if let Cmd::Send { ack, .. } = cmd {
+                let _ = ack.send(Err(WebsocketError::Closed));
+            }
+        }
+        self.shared.state.set(WsState::Closing);
+        self.shared.state.set(WsState::Closed);
+        closed_trigger.fire();
     }
 
-    // Finalize: publish the close outcome, end the inbound queue (readers
-    // drain the backlog first), and fail any queued sends.
-    let _ = shared.close_info.set(peer_frame);
-    drop(in_tx);
-    cmd_rx.close();
-    while let Ok(cmd) = cmd_rx.try_recv() {
-        if let Cmd::Send { ack, .. } = cmd {
-            let _ = ack.send(Err(WebsocketError::Closed));
+    /// Arm the closing deadline (idempotent).
+    fn arm_deadline(&mut self) {
+        if self.deadline.is_none() {
+            self.deadline = Some(tokio::time::Instant::now() + self.close_timeout);
         }
     }
-    shared.state.set(WsState::Closing);
-    shared.state.set(WsState::Closed);
-    closed_trigger.fire();
+
+    /// Drive one transport write to completion, bounded: by the close
+    /// deadline once closing has begun, and otherwise by the local-close
+    /// signal arming that deadline mid-write. A failure or stall marks the
+    /// write half dead and arms the deadline, so the connection still
+    /// reaches `closed` within the bound.
+    async fn bounded_write(
+        &mut self,
+        io: impl std::future::Future<Output = Result<(), tungstenite::Error>>,
+    ) -> WebsocketResult<()> {
+        if self.write_dead {
+            return Err(WebsocketError::Closed);
+        }
+        let mut io = std::pin::pin!(io);
+        let result = match self.deadline {
+            Some(deadline) => match tokio::time::timeout_at(deadline, &mut io).await {
+                Ok(result) => result.map_err(map_write_err),
+                Err(_) => Err(WebsocketError::Closed),
+            },
+            None => {
+                let fired = self.local_closed.fired();
+                let raced = tokio::select! {
+                    result = &mut io => Some(result),
+                    _ = fired => None,
+                };
+                match raced {
+                    Some(result) => result.map_err(map_write_err),
+                    None => {
+                        // A close was requested mid-write: finish the flush
+                        // within the closing bound.
+                        self.arm_deadline();
+                        match tokio::time::timeout_at(self.deadline.unwrap(), &mut io).await {
+                            Ok(result) => result.map_err(map_write_err),
+                            Err(_) => Err(WebsocketError::Closed),
+                        }
+                    }
+                }
+            }
+        };
+        if result.is_err() {
+            self.write_dead = true;
+            self.arm_deadline();
+        }
+        result
+    }
+
+    /// Initiate the closing handshake toward the peer (idempotent): arm the
+    /// deadline first, then send the close frame within it.
+    async fn begin_close(&mut self, ws: &mut Ws, frame: Option<CloseFrame>) {
+        if self.wire_closing {
+            return;
+        }
+        self.wire_closing = true;
+        self.shared.state.set(WsState::Closing);
+        self.arm_deadline();
+        let _ = self.bounded_write(ws.send(WsMessage::Close(frame))).await;
+    }
+
+    /// Queue one inbound data message, enforcing the buffer budget: on
+    /// overflow, latch it, initiate a close toward the peer, and discard
+    /// the message. Readers drain the pre-overflow backlog and then surface
+    /// `error.receive-buffer-overflow`.
+    async fn deliver(&mut self, ws: &mut Ws, message: Payload) {
+        // Data arriving during a closing handshake is discarded, per the
+        // WIT close contract.
+        if self.wire_closing {
+            return;
+        }
+        if self.budget.reserve(message.payload_len()) {
+            let _ = self.in_tx.unbounded_send(message);
+            return;
+        }
+        self.begin_close(ws, None).await;
+    }
 }
 
-/// Queue one inbound data message, enforcing the buffer budget: on overflow,
-/// latch it, initiate a close toward the peer, and discard the message.
-#[allow(clippy::too_many_arguments)]
-async fn deliver(
-    message: InboundMessage,
-    discard: bool,
-    budget: &Arc<InboundBudget>,
-    in_tx: &fmpsc::UnboundedSender<InboundMessage>,
-    ws: &mut tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-    deadline: &mut Option<tokio::time::Instant>,
-    close_timeout: Duration,
-    shared: &Arc<ConnShared>,
-    wire_closing: &mut bool,
-) {
-    // Data arriving during a closing handshake is discarded, per the WIT
-    // close contract.
-    if discard {
-        return;
-    }
-    if budget.reserve(message.payload_len()) {
-        let _ = in_tx.unbounded_send(message);
-        return;
-    }
-    // Overflow: close toward the peer and discard this and later messages.
-    // Readers drain the pre-overflow backlog and then surface
-    // `error.receive-buffer-overflow`.
-    *wire_closing = true;
-    shared.state.set(WsState::Closing);
-    let _ = ws.send(WsMessage::Close(None)).await;
-    if deadline.is_none() {
-        *deadline = Some(tokio::time::Instant::now() + close_timeout);
+/// Classify a transport write failure into the WIT error taxonomy.
+fn map_write_err(err: tungstenite::Error) -> WebsocketError {
+    match err {
+        tungstenite::Error::ConnectionClosed
+        | tungstenite::Error::AlreadyClosed
+        | tungstenite::Error::Protocol(tungstenite::error::ProtocolError::SendAfterClosing) => {
+            WebsocketError::Closed
+        }
+        other => WebsocketError::other(other),
     }
 }

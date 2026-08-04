@@ -15,4 +15,5 @@ wit-bindgen = { workspace = true, features = ["async"] }
 # Concurrent send/receive within a single cooperative task (no OS threads).
 futures = { version = "0.3", default-features = false, features = [
     "async-await",
+    "alloc",
 ] }

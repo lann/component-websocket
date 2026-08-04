@@ -280,7 +280,7 @@ export class Websocket {
   /** @param {WebSocket} ws an OPEN browser WebSocket */
   constructor(ws) {
     this.#ws = ws;
-    this.#incoming = incomingQueue(ws);
+    this.#incoming = incomingQueue(ws, () => this.#transportClosing());
     ws.addEventListener("close", (event) => this.#settleClosed(event), { once: true });
     // `error` without `close` does not happen per spec; the close listener
     // is the single settle point.
@@ -441,9 +441,11 @@ export class Websocket {
       } else {
         this.#ws.close(code);
       }
-    } catch (err) {
-      // Validation covered the InvalidAccessError/SyntaxError cases.
-      throw { tag: "other", val: String(err?.message ?? err) };
+    } catch {
+      // Validation covered the argument errors; per the WIT contract the
+      // close result reflects arguments only, and the deadline above
+      // already bounds the teardown, so a platform throw past this point
+      // must not surface.
     }
   }
 
@@ -457,6 +459,19 @@ export class Websocket {
     } catch {
       // Already closed.
     }
+  }
+
+  /**
+   * A close was initiated below the resource (an inbound-buffer overflow):
+   * bound the teardown and wake the state watch. Unlike a guest-initiated
+   * `close`, the receivable backlog is kept — overflow readers drain it
+   * before observing the overflow error.
+   */
+  #transportClosing() {
+    if (!this.#closeSettled && this.#closeDeadline === null) {
+      this.#closeDeadline = setTimeout(() => this.#settleClosed(null), closeTimeoutMs);
+    }
+    this.#pokeState();
   }
 
   #currentState() {
@@ -562,11 +577,12 @@ function stateStream(current, subscribe, isTerminal) {
  * more messages pending.
  *
  * Buffering is bounded (in payload bytes): a message that would exceed the
- * bound closes the connection and discards that and any later messages;
- * the pre-overflow backlog stays deliverable, after which `next()` rejects
- * with `{ tag: 'receive-buffer-overflow' }`.
+ * bound closes the connection — reported through `onOverflowClose` so the
+ * owning resource can bound the teardown — and discards that and any later
+ * messages; the pre-overflow backlog stays deliverable, after which
+ * `next()` rejects with `{ tag: 'receive-buffer-overflow' }`.
  */
-function incomingQueue(ws) {
+function incomingQueue(ws, onOverflowClose) {
   const limit = maxInboundBuffered;
   const messages = [];
   const waiters = [];
@@ -599,6 +615,7 @@ function incomingQueue(ws) {
       } catch {
         // Already closing.
       }
+      onOverflowClose();
       return;
     }
     const message =
