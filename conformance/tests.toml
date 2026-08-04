@@ -120,6 +120,16 @@ tags = ["close"]
 description = "a second close is a no-op; only the first frame is sent"
 
 [[test]]
+id = "close-boundary-codes"
+tags = ["close"]
+description = "the sendable range's edges (3000, 4999) are accepted and acknowledged intact"
+
+[[test]]
+id = "close-reason-unicode"
+tags = ["close", "errors"]
+description = "the 123-byte reason bound counts UTF-8 bytes; a maximal multi-byte reason round-trips"
+
+[[test]]
 id = "close-invalid-code"
 tags = ["close", "errors"]
 description = "codes outside 1000/3000-4999 fail invalid-argument and leave the connection usable"
@@ -185,9 +195,19 @@ tags = ["lifecycle"]
 description = "a second state-changes stream ends immediately without yielding"
 
 [[test]]
+id = "state-changes-late-take"
+tags = ["lifecycle"]
+description = "a stream taken after the close reflects the state at the first read, never a stale open"
+
+[[test]]
 id = "wait-closed-latched"
 tags = ["lifecycle"]
 description = "wait-closed resolves repeatedly with the same latched value"
+
+[[test]]
+id = "wait-closed-pending"
+tags = ["lifecycle"]
+description = "wait-closed awaited before any close resolves with the eventual acknowledgement"
 
 [[test]]
 id = "send-via-stream"
@@ -228,6 +248,11 @@ description = "the inbound stream may be claimed once; receive fails receiving-v
 id = "receive-via-stream-end-on-close"
 tags = ["streaming", "close"]
 description = "the inbound stream ends when the server closes; wait-closed carries the frame"
+
+[[test]]
+id = "receive-via-stream-overflow"
+tags = ["streaming", "flow-control", "errors"]
+description = "an overflow observed through the claimed stream delivers the backlog and then ends"
 
 [[test]]
 id = "receive-buffer-overflow"
