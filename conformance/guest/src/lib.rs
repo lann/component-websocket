@@ -76,12 +76,24 @@ const CORPUS: &[(&str, &[&str])] = &[
     ("wait-closed-latched", &["lifecycle"]),
     ("send-via-stream", &["streaming"]),
     ("receive-via-stream", &["streaming"]),
+    ("stream-text-round-trip", &["streaming"]),
+    ("send-via-stream-invalid-utf8", &["streaming", "errors"]),
+    ("send-via-stream-length-mismatch", &["streaming", "errors"]),
+    (
+        "send-via-stream-sent-count",
+        &["streaming", "errors", "close"],
+    ),
     ("receive-via-stream-once", &["streaming", "errors"]),
     ("receive-via-stream-end-on-close", &["streaming", "close"]),
     ("receive-buffer-overflow", &["flow-control", "errors"]),
     (
         "receive-buffer-overflow-unacknowledged",
         &["flow-control", "errors", "timeouts"],
+    ),
+    ("overflow-oversized-message", &["flow-control", "errors"]),
+    (
+        "overflow-oversized-message-pending",
+        &["flow-control", "errors"],
     ),
 ];
 
@@ -1020,6 +1032,202 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 None => Err("wait-closed reported an abnormal closure".to_string()),
             }
         }
+        "stream-text-round-trip" => {
+            let ws = connect(config, "/echo", &[]).await?;
+            let text = "streamed téxt — 流 ✓";
+            let bytes = text.as_bytes().to_vec();
+            // Outbound: one text message through send-via-stream keeps its
+            // kind through the echo.
+            let send_side = async {
+                let (mut tx, rx) = bindings::wit_stream::new();
+                let send = ws.send_via_stream(rx);
+                let feed = async {
+                    let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                    let message = bindings::lann::websocket::types::StreamMessage {
+                        kind: MessageKind::String,
+                        length: bytes.len() as u32,
+                        data: data_rx,
+                    };
+                    if !tx.write_all(vec![message]).await.is_empty() {
+                        return Err("stream-message writer closed early".to_string());
+                    }
+                    if !data_tx.write_all(bytes.clone()).await.is_empty() {
+                        return Err("payload writer closed early".to_string());
+                    }
+                    drop(data_tx);
+                    drop(tx);
+                    Ok(())
+                };
+                let (sent, fed) = futures::join!(send, feed);
+                fed?;
+                sent.map_err(|e| format!("send-via-stream: {}", describe(&e.error)))
+            };
+            send_side.await?;
+            match receive(&ws).await? {
+                Message::String(got) if got == text => {}
+                Message::String(_) => return Err("streamed text corrupted".to_string()),
+                Message::Binary(_) => return Err("streamed text arrived as binary".to_string()),
+            }
+            // Inbound: a text message through the claimed stream is
+            // delivered with kind string and intact UTF-8.
+            send(&ws, Message::String(text.to_string())).await?;
+            let mut stream = ws
+                .receive_via_stream()
+                .map_err(|e| format!("receive-via-stream: {}", describe(&e)))?;
+            let mut got: Option<(MessageKind, Vec<u8>)> = None;
+            while got.is_none() {
+                let (status, batch) = stream.read(Vec::with_capacity(1)).await;
+                if let Some(message) = batch.into_iter().next() {
+                    let kind = message.kind;
+                    let data = drain_byte_stream(message.data).await;
+                    got = Some((kind, data));
+                } else if matches!(
+                    status,
+                    wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
+                ) {
+                    return Err("stream ended before the text message".to_string());
+                }
+            }
+            match got {
+                Some((MessageKind::String, data)) if data == bytes => {}
+                Some((MessageKind::String, _)) => {
+                    return Err("inbound streamed text corrupted".to_string())
+                }
+                Some((MessageKind::Binary, _)) => {
+                    return Err("text message delivered as binary stream-message".to_string())
+                }
+                None => unreachable!("loop exits only with a message"),
+            }
+            let _ = ws.close(Some(1000), "");
+            Ok(())
+        }
+        "send-via-stream-invalid-utf8" => {
+            // A string-kind payload must be valid UTF-8; a violating
+            // producer gets an error, never silently mangled text.
+            let ws = connect(config, "/echo", &[]).await?;
+            let result = {
+                let (mut tx, rx) = bindings::wit_stream::new();
+                let send = ws.send_via_stream(rx);
+                let feed = async {
+                    let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                    let message = bindings::lann::websocket::types::StreamMessage {
+                        kind: MessageKind::String,
+                        length: 4,
+                        data: data_rx,
+                    };
+                    let _ = tx.write_all(vec![message]).await;
+                    let _ = data_tx.write_all(vec![0xff, 0xfe, 0x80, 0x00]).await;
+                    drop(data_tx);
+                    drop(tx);
+                };
+                let (sent, ()) = futures::join!(send, feed);
+                sent
+            };
+            match result {
+                Err(err) if matches!(err.error, Error::Other(_)) && err.sent == 0 => Ok(()),
+                Err(err) => Err(format!(
+                    "expected other with sent=0, got {} after {} message(s)",
+                    describe(&err.error),
+                    err.sent
+                )),
+                Ok(()) => Err("an invalid-UTF-8 string stream-message was sent".to_string()),
+            }
+        }
+        "send-via-stream-length-mismatch" => {
+            // The payload must total exactly the declared length; both a
+            // short and a long payload are producer errors.
+            for (declared, actual) in [(16u32, 8usize), (8u32, 16usize)] {
+                let ws = connect(config, "/echo", &[]).await?;
+                let result = {
+                    let (mut tx, rx) = bindings::wit_stream::new();
+                    let send = ws.send_via_stream(rx);
+                    let feed = async {
+                        let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                        let message = bindings::lann::websocket::types::StreamMessage {
+                            kind: MessageKind::Binary,
+                            length: declared,
+                            data: data_rx,
+                        };
+                        let _ = tx.write_all(vec![message]).await;
+                        let _ = data_tx.write_all(vec![7u8; actual]).await;
+                        drop(data_tx);
+                        drop(tx);
+                    };
+                    let (sent, ()) = futures::join!(send, feed);
+                    sent
+                };
+                match result {
+                    Err(err) if matches!(err.error, Error::Other(_)) && err.sent == 0 => {}
+                    Err(err) => {
+                        return Err(format!(
+                            "declared {declared} actual {actual}: expected other with sent=0, \
+                             got {} after {}",
+                            describe(&err.error),
+                            err.sent
+                        ))
+                    }
+                    Ok(()) => {
+                        return Err(format!(
+                            "declared {declared} actual {actual}: mismatched stream-message \
+                             was sent"
+                        ))
+                    }
+                }
+            }
+            Ok(())
+        }
+        "send-via-stream-sent-count" => {
+            // The server closes after echoing one message; a second
+            // streamed message must fail with `closed` and `sent` must
+            // count exactly the message that made it.
+            let ws = connect(config, "/close-after?count=1&code=1000", &[]).await?;
+            let payload = make_payload(0, 64);
+            let (mut tx, rx) = bindings::wit_stream::new();
+            let send = ws.send_via_stream(rx);
+            let feed = async {
+                let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                let message = bindings::lann::websocket::types::StreamMessage {
+                    kind: MessageKind::Binary,
+                    length: payload.len() as u32,
+                    data: data_rx,
+                };
+                if !tx.write_all(vec![message]).await.is_empty() {
+                    return Err("stream-message writer closed early".to_string());
+                }
+                if !data_tx.write_all(payload.clone()).await.is_empty() {
+                    return Err("payload writer closed early".to_string());
+                }
+                drop(data_tx);
+                // Synchronize: once the echo is back and the connection has
+                // fully closed, the next streamed message must fail.
+                if receive_binary(&ws).await? != payload {
+                    return Err("echo before close corrupted".to_string());
+                }
+                let _ = ws.wait_closed().await;
+                let (mut data_tx, data_rx) = bindings::wit_stream::new();
+                let message = bindings::lann::websocket::types::StreamMessage {
+                    kind: MessageKind::Binary,
+                    length: payload.len() as u32,
+                    data: data_rx,
+                };
+                let _ = tx.write_all(vec![message]).await;
+                let _ = data_tx.write_all(payload.clone()).await;
+                drop(data_tx);
+                drop(tx);
+                Ok(())
+            };
+            let (sent, fed) = futures::join!(send, feed);
+            fed?;
+            match sent {
+                Err(err) if matches!(err.error, Error::Closed) && err.sent == 1 => Ok(()),
+                Err(err) => Err(format!(
+                    "expected closed with sent=1, got {} after {} message(s)",
+                    describe(&err.error),
+                    err.sent
+                )),
+                Ok(()) => Err("send-via-stream succeeded past the close".to_string()),
+            }
+        }
         "receive-buffer-overflow" => {
             // Flood 4x the bound the adapters configure
             // (`ASSUMED_BUFFER_BOUND`) without receiving; the overflow
@@ -1109,6 +1317,52 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 Some(info) => Err(format!(
                     "unacknowledged overflow close produced close-info code={}",
                     info.code
+                )),
+            }
+        }
+        "overflow-oversized-message" => {
+            // A single message larger than the whole bound overflows
+            // immediately: it is never delivered, and nothing precedes it
+            // in the backlog.
+            let oversized = ASSUMED_BUFFER_BOUND + 1024;
+            let ws = connect(config, &format!("/burst?count=1&size={oversized}"), &[]).await?;
+            match ws.receive().await {
+                Err(Error::ReceiveBufferOverflow) => Ok(()),
+                Ok(_) => {
+                    Err("an oversized message was delivered past the buffer bound".to_string())
+                }
+                Err(other) => Err(format!(
+                    "expected receive-buffer-overflow, got {}",
+                    describe(&other)
+                )),
+            }
+        }
+        "overflow-oversized-message-pending" => {
+            // The bound holds even when a receiver is already waiting for
+            // the message: an oversized message overflows rather than
+            // bypassing the buffer into the waiting receive.
+            let oversized = ASSUMED_BUFFER_BOUND + 1024;
+            let ws = connect(
+                config,
+                &format!("/burst-on-message?count=1&size={oversized}"),
+                &[],
+            )
+            .await?;
+            // `join!` polls in order: the receive is pending before the
+            // trigger message asks the server to burst.
+            let pending = ws.receive();
+            let trigger = async { send(&ws, Message::Binary(vec![1])).await };
+            let (received, sent) = futures::join!(pending, trigger);
+            sent?;
+            match received {
+                Err(Error::ReceiveBufferOverflow) => Ok(()),
+                Ok(_) => Err(
+                    "an oversized message was handed to a pending receive past the bound"
+                        .to_string(),
+                ),
+                Err(other) => Err(format!(
+                    "expected receive-buffer-overflow, got {}",
+                    describe(&other)
                 )),
             }
         }

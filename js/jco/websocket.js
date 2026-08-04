@@ -333,22 +333,44 @@ export class Websocket {
     let sent = 0n;
     try {
       for await (const item of streamItems(messages)) {
-        const bytes = await collectByteStream(item.data);
-        if (bytes.length !== item.length) {
+        // Buffering is bounded by the declared length; bytes past it are
+        // counted, not stored, so a mis-declared length cannot grow host
+        // memory without bound.
+        const { bytes, excess } = await collectByteStream(item.data, item.length);
+        if (excess > 0 || bytes.length !== item.length) {
           throw {
             tag: "other",
-            val: `stream-message payload was ${bytes.length} bytes but length declared ${item.length}`,
+            val: `stream-message payload was ${bytes.length + excess} bytes but length declared ${item.length}`,
           };
         }
-        const message =
-          item.kind === "string"
-            ? { tag: "string", val: new TextDecoder().decode(bytes) }
-            : { tag: "binary", val: bytes };
+        let message;
+        if (item.kind === "string") {
+          // The payload must be valid UTF-8, per the streaming contract; a
+          // lossy decode would silently send mangled text.
+          let text;
+          try {
+            text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          } catch {
+            throw {
+              tag: "other",
+              val: "string stream-message payload is not valid UTF-8",
+            };
+          }
+          message = { tag: "string", val: text };
+        } else {
+          message = { tag: "binary", val: bytes };
+        }
         await this.send(message);
         sent += 1n;
       }
     } catch (error) {
-      throw { error: typeof error?.tag === "string" ? error : { tag: "closed" }, sent };
+      // A WIT error variant passes through; anything else is a host-side
+      // failure and must not masquerade as a normal close.
+      throw {
+        error:
+          typeof error?.tag === "string" ? error : { tag: "other", val: String(error) },
+        sent,
+      };
     }
   }
 
@@ -505,6 +527,9 @@ export class Websocket {
       clearTimeout(this.#closeDeadline);
       this.#closeDeadline = null;
     }
+    // A settle without a close event (the deadline path) must still end
+    // the inbound queue, or a pending receive would hang past the close.
+    this.#incoming.end();
     if (event && event.code !== 1006 && event.code !== 1015) {
       this.#closeInfo = { code: event.code, reason: event.reason ?? "" };
     } else {
@@ -605,7 +630,11 @@ function incomingQueue(ws, onOverflowClose) {
     // Account string payloads in UTF-8 bytes (the WIT bound counts payload
     // bytes; `.length` would count UTF-16 code units).
     const size = typeof data === "string" ? utf8ByteLength(data) : data.byteLength;
-    if (buffered + size > limit && !waiters.length) {
+    // The bound applies to queued bytes: a pending waiter implies an empty
+    // queue (`buffered` is 0), so this reduces to `size > limit` then — a
+    // single message larger than the whole bound overflows even when a
+    // receiver is waiting for it, matching the wasmtime host.
+    if (buffered + size > limit) {
       // The bounded inbound buffer overflowed: close the connection and
       // discard this and any later messages. Buffered messages stay
       // deliverable.
@@ -653,6 +682,12 @@ function incomingQueue(ws, onOverflowClose) {
         waiters.shift().reject(error);
       }
     },
+    /**
+     * End the queue: pending and future reads past the backlog fail with
+     * the end error (overflow-aware). Idempotent; used by the deadline
+     * settle path, where no browser close event ever fires.
+     */
+    end,
     /**
      * Discard the unread backlog and fail pending and future reads
      * `closed` (a local `close`, per the WIT contract).
@@ -718,17 +753,27 @@ function bytesToStream(bytes) {
   });
 }
 
-/** Collect every byte of a WIT byte stream into one `Uint8Array`. */
-async function collectByteStream(stream) {
+/**
+ * Collect a WIT byte stream into one `Uint8Array`, storing at most `limit`
+ * bytes; bytes past the limit are consumed and counted in `excess`, never
+ * buffered.
+ */
+async function collectByteStream(stream, limit) {
   const chunks = [];
   let total = 0;
+  let excess = 0;
   const push = (value) => {
     if (value === undefined || value === null) return;
-    const chunk = toByteChunk(value);
-    if (chunk.length) {
-      chunks.push(chunk);
-      total += chunk.length;
+    let chunk = toByteChunk(value);
+    if (!chunk.length) return;
+    const room = limit - total;
+    if (chunk.length > room) {
+      excess += chunk.length - Math.max(room, 0);
+      if (room <= 0) return;
+      chunk = chunk.subarray(0, room);
     }
+    chunks.push(chunk);
+    total += chunk.length;
   };
   if (globalThis.ReadableStream && stream instanceof ReadableStream) {
     const reader = stream.getReader();
@@ -759,5 +804,5 @@ async function collectByteStream(stream) {
     out.set(chunk, offset);
     offset += chunk.length;
   }
-  return out;
+  return { bytes: out, excess };
 }

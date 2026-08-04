@@ -245,9 +245,10 @@ interface connections {
         ///
         /// This method may only be called once per connection. Once it has
         /// been called, any further call to it or to `receive` returns
-        /// `error.receiving-via-stream`. Any calls to `receive` that are
-        /// pending when this method is called are resolved (with
-        /// `error.receiving-via-stream`) before this method returns.
+        /// `error.receiving-via-stream`. Calls to `receive` that are
+        /// pending when this method is called fail with
+        /// `error.receiving-via-stream`: a pending receive is never handed
+        /// a message once the stream is claimed.
         receive-via-stream: func() -> result<stream<stream-message>, error>;
 
         /// A stream of lifecycle states, behaving as a coalescing watch:
