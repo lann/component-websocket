@@ -12,9 +12,7 @@
 // to the echo server directly: WebSocket is not subject to CORS, and a
 // localhost `http:` page may open `ws:` connections, so no proxying is
 // needed.
-import { spawn } from "node:child_process";
 import http from "node:http";
-import net from "node:net";
 import { availableParallelism } from "node:os";
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
@@ -22,6 +20,8 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { chromium } from "playwright-core";
+
+import { spawnEchod, unreachableUrl } from "./echod.mjs";
 
 const ADAPTER_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(ADAPTER_DIR, "..", "..", "..");
@@ -55,14 +55,23 @@ const { values } = parseArgs({
 // override with CHROME_PATH; a playwright-installed Chromium is also
 // discovered.
 async function findChrome() {
+  const platformPaths =
+    process.platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        ]
+      : [
+          "/usr/bin/google-chrome",
+          "/usr/bin/google-chrome-stable",
+          "/usr/bin/chromium",
+          "/usr/bin/chromium-browser",
+        ];
   const explicit = [
     process.env.CHROME_PATH,
     process.env.CHROME_BIN,
     process.env.PUPPETEER_EXECUTABLE_PATH,
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
+    ...platformPaths,
   ];
   for (const p of explicit) {
     if (!p) continue;
@@ -81,8 +90,12 @@ async function findChrome() {
     const revisions = (await readdir(cache))
       .filter((name) => /^chromium-\d+$/.test(name))
       .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]));
+    const suffix =
+      process.platform === "darwin"
+        ? ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"]
+        : ["chrome-linux", "chrome"];
     for (const revision of revisions) {
-      const candidate = join(cache, revision, "chrome-linux", "chrome");
+      const candidate = join(cache, revision, ...suffix);
       try {
         await access(candidate);
         return candidate;
@@ -155,44 +168,6 @@ function startServer(wasmNames) {
   return new Promise((res) => server.listen(0, "127.0.0.1", () => res(server)));
 }
 
-/** Start `conformance-echod`, returning its `ws:` base URL and a shutdown handle. */
-async function spawnEchod(bin) {
-  const child = spawn(bin, [], { stdio: ["ignore", "pipe", "inherit"] });
-  const base = await new Promise((resolveUrl, rejectUrl) => {
-    let buffer = "";
-    const onData = (chunk) => {
-      buffer += chunk;
-      const match = /LISTENING (ws:\/\/\S+)/.exec(buffer);
-      if (match) {
-        child.stdout.off("data", onData);
-        resolveUrl(match[1].trim());
-      }
-    };
-    child.stdout.on("data", onData);
-    child.on("exit", (code) =>
-      rejectUrl(new Error(`echo server exited before reporting a URL (exit code ${code})`)),
-    );
-    setTimeout(() => rejectUrl(new Error("echo server did not report a URL in time")), 10_000);
-  });
-  return {
-    base,
-    async shutdown() {
-      child.kill("SIGTERM");
-    },
-  };
-}
-
-/** A loopback `ws:` URL whose connect attempt should be refused. */
-function unreachableUrl() {
-  return new Promise((resolvePort, rejectPort) => {
-    const server = net.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolvePort(`ws://127.0.0.1:${port}/echo`));
-    });
-    server.on("error", rejectPort);
-  });
-}
 
 /**
  * The corpus run performed inside the browser page. Serialized and

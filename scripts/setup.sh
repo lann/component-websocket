@@ -22,6 +22,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Fail on the missing prerequisites this script deliberately does not
+# install, before spending minutes on the ones it does.
+if ! have rustup; then
+    echo "setup: rustup is required but not on PATH (https://rustup.rs); see the README prerequisites" >&2
+    exit 1
+fi
+if [ "${SKIP_NODE:-}" != "1" ] && ! have npm; then
+    echo "setup: npm is required but not on PATH (Node 24+; see the README prerequisites), or set SKIP_NODE=1" >&2
+    exit 1
+fi
+
 # Rust toolchain: rust-toolchain.toml drives what rustup installs.
 (cd "$REPO_ROOT" && (rustup show active-toolchain >/dev/null 2>&1 || rustup toolchain install))
 

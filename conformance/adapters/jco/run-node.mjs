@@ -7,9 +7,7 @@
 // jco's async ABI needs JavaScript Promise Integration (JSPI), so this must
 // run under a JSPI-capable runtime: Node 24+ with
 // `--experimental-wasm-jspi` (the npm `run:node` script supplies it).
-import { spawn } from "node:child_process";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import net from "node:net";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +19,9 @@ import {
   CONNECT_TIMEOUT_MS,
   MAX_INBOUND_BUFFER_BYTES,
 } from "./driver.js";
+import { requireNode24, spawnEchod, unreachableUrl } from "./echod.mjs";
+
+requireNode24();
 // The single host module, shared with the demo runners and the browser
 // adapter.
 import * as connections from "../../../js/jco/websocket.js";
@@ -68,50 +69,16 @@ async function loadCoreModules(generatedDir) {
   return modules;
 }
 
-/** Start `conformance-echod`, returning its `ws:` base URL and a shutdown handle. */
-export async function spawnEchod(bin) {
-  const child = spawn(bin, [], { stdio: ["ignore", "pipe", "inherit"] });
-  const base = await new Promise((resolveUrl, rejectUrl) => {
-    let buffer = "";
-    const onData = (chunk) => {
-      buffer += chunk;
-      const match = /LISTENING (ws:\/\/\S+)/.exec(buffer);
-      if (match) {
-        child.stdout.off("data", onData);
-        resolveUrl(match[1].trim());
-      }
-    };
-    child.stdout.on("data", onData);
-    child.on("exit", (code) =>
-      rejectUrl(new Error(`echo server exited before reporting a URL (exit code ${code})`)),
-    );
-    setTimeout(() => rejectUrl(new Error("echo server did not report a URL in time")), 10_000);
-  });
-  return {
-    base,
-    async shutdown() {
-      child.kill("SIGTERM");
-    },
-  };
-}
-
-/**
- * A loopback `ws:` URL whose connect attempt should be refused: a port that
- * was just bound and released.
- */
-export function unreachableUrl() {
-  return new Promise((resolvePort, rejectPort) => {
-    const server = net.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
-      server.close(() => resolvePort(`ws://127.0.0.1:${port}/echo`));
-    });
-    server.on("error", rejectPort);
-  });
-}
 
 async function main() {
   const generatedDir = values.generated;
+  try {
+    await access(join(generatedDir, "conformance-guest.js"));
+  } catch {
+    throw new Error(
+      `missing transpiled guest in ${generatedDir}; run "npm run transpile" first`,
+    );
+  }
   const { instantiate } = await import(join(generatedDir, "conformance-guest.js"));
   const modules = await loadCoreModules(generatedDir);
 
@@ -146,8 +113,9 @@ async function main() {
   const outPath = join(values.out, `${values.target}.json`);
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`);
   const failed = results.filter((r) => r.status === "fail").length;
+  // Failing cases are the runner's business; this adapter exits nonzero
+  // only on harness errors.
   process.stderr.write(`wrote ${outPath} (${results.length} tests, ${failed} failed)\n`);
-  if (failed) process.exitCode = 0; // failing cases are the runner's business
 }
 
 main().then(

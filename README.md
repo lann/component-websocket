@@ -47,7 +47,7 @@ in-guest.
 | [`wit/`](wit) | The `lann:websocket` package: a `types` interface for structural types and a `connections` interface owning the `websocket` resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. Package-wide contracts live in [`wit/README.md`](wit/README.md). |
 | [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the jco conformance adapters. |
 | [`rust/wasmtime`](rust/wasmtime) | The **Wasmtime host crate** (`wasmtime-websocket`): `add_to_linker` + `WasiWebsocketView`, per-store `WasiWebsocketCtx` knobs for the bounds the WIT leaves implementation-defined. |
-| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest with a 40-test corpus, a suite-owned echo server with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium), and the runner that classifies results into [the matrix](conformance/README.md). |
+| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest corpus, a suite-owned echo server with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium), and the runner that classifies results into [the matrix](conformance/README.md). |
 | [`examples/`](examples) | The **echo-demo guest component** plus native (`just demo::wasmtime`) and Node (`just demo::node`) runners against the suite echo server. |
 
 The in-guest provider (a WebSocket stack over `wasi:sockets` TCP,
@@ -90,8 +90,10 @@ channel as interchangeable message transports.
 
 ## Running it
 
-Prerequisites: `rustup`, Node 24+, and `./scripts/setup.sh` (installs the
-pinned `wasm-tools`/`just` and the npm trees).
+Prerequisites: `rustup`, Node 24+ (the jco runners need JSPI), a
+Chrome/Chromium 137+ for the browser conformance target (discovered from
+the usual locations, or set `CHROME_PATH`), and `./scripts/setup.sh`
+(installs the pinned `wasm-tools`/`just` and the npm trees).
 
 ```sh
 ./scripts/setup.sh

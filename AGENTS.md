@@ -44,6 +44,24 @@ co-dependent across every implementation); either implementation →
 `just conformance`; Rust → `just check`; conformance machinery →
 `just conformance`; justfiles/CI → `just ci`.
 
+## Renaming WIT items
+
+Changing any interface or resource identifier means updating everyone who
+names it as a string; nothing catches these at build time except the
+places listed failing at run time. The sites:
+
+- the WIT worlds: root `wit/`, `rust/wasmtime/wit/world.wit`,
+  `conformance/wit/world.wit`, `examples/echo-demo/wit/world.wit`;
+- `bindgen!` configs (interface paths appear in per-function import
+  overrides and `with:` maps): `rust/wasmtime/src/bindings.rs`,
+  `conformance/adapters/wasmtime/src/main.rs`,
+  `examples/wasmtime-demo/src/lib.rs`;
+- jco instantiate maps (fail at run time, not build):
+  `conformance/adapters/jco/run-node.mjs`, `run-browser.mjs`,
+  `examples/jco-demo/run.mjs`;
+- the jco host module's exported class names, which jco maps by resource
+  name: `js/jco/websocket.js`.
+
 Before designing WIT or touching async/stream plumbing, consult
 [`lann/wasm-component-starter`](https://github.com/lann/wasm-component-starter)
 (especially `OUTLINE.md`) — treat it as a living knowledge base and re-read

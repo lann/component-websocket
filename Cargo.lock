@@ -110,20 +110,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "conformance-adapter-wasmtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "conformance-common",
- "conformance-echod",
- "futures",
- "tokio",
- "wasmtime",
- "wasmtime-websocket",
-]
-
-[[package]]
-name = "conformance-common"
+name = "conformance-adapter-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -133,6 +120,18 @@ dependencies = [
  "sha2",
  "tokio",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "conformance-adapter-wasmtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "conformance-adapter-common",
+ "conformance-echod",
+ "tokio",
+ "wasmtime",
+ "wasmtime-websocket",
 ]
 
 [[package]]
@@ -2104,12 +2103,9 @@ dependencies = [
 name = "wasmtime-websocket"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "bytes",
  "futures",
  "tokio",
  "tokio-tungstenite",
- "tungstenite",
  "wasmtime",
 ]
 

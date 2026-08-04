@@ -156,26 +156,17 @@ interface connections {
     /// A `websocket` is bidirectional and message-oriented. Each
     /// `send`/`receive` carries exactly one WebSocket message, preserving
     /// message boundaries. Concurrent calls are supported so the host and
-    /// guest can pipeline messages and let the async ABI apply backpressure.
-    /// A message may be carried as a whole `message` value or, to bound
-    /// in-memory buffering, as a `stream-message` whose payload flows
-    /// through a byte `stream`.
+    /// guest can pipeline messages and let the async ABI apply
+    /// backpressure. A message may be carried as a whole `message` value
+    /// or, to bound in-memory buffering, as a `stream-message` whose
+    /// payload flows through a byte `stream` (see `README.md`, "Streaming
+    /// contract").
     ///
-    /// # Inbound buffering
-    ///
-    /// There is **no wire-level inbound backpressure**: a guest that
-    /// receives slowly does not slow the remote sender down. (The W3C
-    /// `WebSocket` API offers no read-side flow control, so a browser-backed
-    /// implementation cannot provide it; other implementations deliberately
-    /// match that floor so the same guest behaves compatibly everywhere.)
-    /// Instead, every implementation buffers inbound messages up to an
-    /// implementation-defined bound (8 MiB of payload bytes by convention).
-    /// If the buffer overflows, the connection is closed: messages buffered
-    /// before the overflow remain receivable, later messages are discarded,
-    /// and once the buffered backlog is drained `receive` fails with
-    /// `error.receive-buffer-overflow` (and a `receive-via-stream` stream
-    /// ends). Guests that need flow control must implement it at the
-    /// application layer. See `README.md`, "Inbound buffering".
+    /// There is no wire-level inbound backpressure: inbound messages are
+    /// buffered up to an implementation-defined bound, and overflowing it
+    /// closes the connection — the buffered backlog stays receivable, then
+    /// `receive` fails `error.receive-buffer-overflow`. See `README.md`,
+    /// "Inbound buffering", for the full contract.
     resource websocket {
         /// Open a WebSocket connection.
         ///
@@ -279,11 +270,10 @@ interface connections {
         /// Close the connection.
         ///
         /// Deliberately synchronous, matching the W3C `WebSocket.close()`:
-        /// it initiates the closing handshake — pending sends are flushed,
-        /// then a close frame carrying `code` and `reason` is sent — and
-        /// returns; await `wait-closed` (or `state-changes` reaching
-        /// `closed`) for completion. Idempotent: closing an already-closing
-        /// or closed connection succeeds and is a no-op.
+        /// it initiates the closing handshake and returns; await
+        /// `wait-closed` (or `state-changes` reaching `closed`) for
+        /// completion. Idempotent: closing an already-closing or closed
+        /// connection succeeds and is a no-op.
         ///
         /// Argument validation is eager and uniform: `code` must be 1000 or
         /// in 3000-4999 (the codes a browser client may send — see
@@ -293,17 +283,11 @@ interface connections {
         /// sends a close frame with no code, which the peer observes as
         /// code 1005.
         ///
-        /// The close is observed locally at once: operations in flight when
-        /// the connection closes, and any calls made after, fail with
-        /// `error.closed`, and the resource's streams end. Messages
-        /// buffered but not yet received when `close` is called are
-        /// discarded, as are messages the peer sends during the closing
-        /// handshake — a guest that wants them must receive them first.
-        /// The closing procedure is bounded end to end: if pending sends
-        /// cannot flush, or the peer never completes the handshake, the
-        /// connection still reaches `closed` after an
-        /// implementation-defined bound. Dropping the resource without
-        /// calling `close` implies `close(none, "")`.
+        /// The close is observed locally at once, unread messages are
+        /// discarded, and the whole closing procedure is bounded — see
+        /// `README.md`, "Close contract", for what every operation
+        /// observes around it. Dropping the resource without calling
+        /// `close` implies `close(none, "")`.
         close: func(code: option<u16>, reason: string) -> result<_, error>;
     }
 }

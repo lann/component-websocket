@@ -1,5 +1,5 @@
 [package]
-name = "conformance-common"
+name = "conformance-adapter-common"
 version = "0.1.0"
 edition = "2021"
 publish = false

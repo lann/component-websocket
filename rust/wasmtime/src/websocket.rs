@@ -37,12 +37,12 @@ use crate::state_watch::StateWatch;
 pub const DEFAULT_MAX_INBOUND_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 
 /// The default bound on how long `connect` waits for the handshake.
-pub(crate) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The default bound on how long a locally initiated close waits for the
 /// peer to complete the closing handshake before the transport is torn down
-/// anyway.
-pub(crate) const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
+/// anyway (and on any single stalled transport write once closing).
+pub const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The contents of a received close frame, mirroring the WIT `close-info`.
 #[derive(Clone, Debug, PartialEq, Eq)]

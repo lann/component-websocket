@@ -46,6 +46,9 @@ const DEFAULT_MAX_INBOUND_BUFFERED = 8 * 1024 * 1024;
 const MAX_BUFFERED_AMOUNT = 8 * 1024 * 1024;
 const DRAIN_POLL_MS = 4;
 
+// Batch size for reads from jco's own Stream objects.
+const READ_BATCH = 65536;
+
 /** The configured knobs; connections capture them at `connect`. */
 let maxInboundBuffered = DEFAULT_MAX_INBOUND_BUFFERED;
 let connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
@@ -308,7 +311,7 @@ export class Websocket {
       await new Promise((resolve) => setTimeout(resolve, DRAIN_POLL_MS));
     }
     try {
-      this.#ws.send(message.tag === "string" ? message.val : message.val);
+      this.#ws.send(message.val);
     } catch (err) {
       throw { tag: "other", val: String(err?.message ?? err) };
     }
@@ -789,7 +792,7 @@ async function collectByteStream(stream, limit) {
   } else if (typeof stream.read === "function") {
     // jco's own Stream object: read in batches rather than per element.
     for (;;) {
-      const { value, done } = await stream.read({ count: 65536 });
+      const { value, done } = await stream.read({ count: READ_BATCH });
       push(value);
       if (done) break;
     }

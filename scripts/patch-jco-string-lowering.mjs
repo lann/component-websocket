@@ -17,7 +17,11 @@
 // (or an unfixed jco upgrade) fails that row on both jco targets.
 import { readFile, writeFile } from "node:fs/promises";
 
-const path = process.argv[2] ?? "generated/conformance-guest.js";
+const path = process.argv[2];
+if (!path) {
+  console.error("usage: patch-jco-string-lowering.mjs <transpiled-module.js>");
+  process.exit(1);
+}
 const source = await readFile(path, "utf8");
 
 const broken = `  const { ptr, codepoints } = _utf8AllocateAndEncode(ctx.vals[0], ctx.realloc, ctx.memory);

@@ -7,9 +7,8 @@ description = "Conformance adapter for the wasmtime (native tokio-tungstenite) t
 
 [dependencies]
 anyhow = { workspace = true }
-conformance-common = { path = "../common" }
+conformance-adapter-common = { path = "../common" }
 conformance-echod = { path = "../../server" }
-futures = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 wasmtime = { workspace = true }
 wasmtime-websocket = { path = "../../../rust/wasmtime" }

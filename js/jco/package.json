@@ -7,5 +7,8 @@
   "exports": {
     ".": "./websocket.js"
   },
-  "license": "MIT OR Apache-2.0"
+  "license": "MIT OR Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  }
 }

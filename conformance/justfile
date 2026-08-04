@@ -1,12 +1,14 @@
 # The conformance suite: builders produce artifacts, runners execute
-# prebuilt artifacts only — the split exists so CI can compile once and fan
-# the runs out. `just conformance` (the default) does everything.
+# prebuilt artifacts only. The split keeps per-target iteration cheap
+# (`just conformance::wasmtime` rebuilds only what its target needs) and
+# leaves a build-once/fan-out CI shape available if the matrix grows.
 
 import '../justfile.shared.just'
 
 # Hard cap on any single adapter invocation, so a wedged run cannot hang a
-# CI job to its timeout.
-timeout := "600"
+# CI job to its timeout. Empty where GNU coreutils' `timeout` is missing
+# (macOS): the caps only bound CI-shaped environments.
+timeout_cmd := `command -v timeout >/dev/null 2>&1 && echo "timeout 600" || echo ""`
 
 default: all
 
@@ -15,10 +17,10 @@ all: _clean-results build-all run-wasmtime run-jco-node run-jco-browser classify
 
 # ----- builders ---------------------------------------------------------------
 
-build-guest: (build-component "conformance-guest" "conformance_guest")
+build-guest: (build-component "conformance-guest")
 
 # Transpile the guest for the jco adapters (includes the string-lowering
-# patch; see adapters/jco/patch-jco-string-lowering.mjs).
+# patch; see scripts/patch-jco-string-lowering.mjs).
 transpile-guest: build-guest
     npm --prefix {{root}}/conformance/adapters/jco run transpile
 
@@ -42,16 +44,16 @@ _clean-results:
     rm -f {{root}}/conformance/results/*.json {{root}}/conformance/matrix.md
 
 run-wasmtime:
-    timeout {{timeout}} {{root}}/target/debug/conformance-adapter-wasmtime \
+    {{timeout_cmd}} {{root}}/target/debug/conformance-adapter-wasmtime \
         --guest {{root}}/target/components/conformance-guest.wasm \
         --tests {{root}}/conformance/tests.toml \
         --out {{root}}/conformance/results
 
 run-jco-node:
-    timeout {{timeout}} npm --prefix {{root}}/conformance/adapters/jco run run:node
+    {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:node
 
 run-jco-browser:
-    timeout {{timeout}} npm --prefix {{root}}/conformance/adapters/jco run run:browser
+    {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:browser
 
 # Classify the collected results against tests.toml and targets.toml and
 # render the matrix. Completeness is required: every declared target must
@@ -76,6 +78,29 @@ classify-partial:
 
 # ----- per-target conveniences -------------------------------------------------
 
-wasmtime: build-guest build-adapter-wasmtime run-wasmtime
-jco-node: transpile-guest build-echod run-jco-node
-jco-browser: transpile-guest build-echod run-jco-browser
+wasmtime: build-guest build-adapter-wasmtime build-runner run-wasmtime
+jco-node: transpile-guest build-echod build-runner run-jco-node
+jco-browser: transpile-guest build-echod build-runner run-jco-browser
+
+# Run selected tests against one target, then classify leniently:
+# `just conformance::only wasmtime close-local echo-binary`.
+only target +tests: build-all
+    #!/usr/bin/env bash
+    set -euo pipefail
+    flags=()
+    for t in {{tests}}; do flags+=(--only "$t"); done
+    case "{{target}}" in
+        wasmtime)
+            {{root}}/target/debug/conformance-adapter-wasmtime \
+                --guest {{root}}/target/components/conformance-guest.wasm \
+                --tests {{root}}/conformance/tests.toml \
+                --out {{root}}/conformance/results "${flags[@]}" ;;
+        jco-node)
+            npm --prefix {{root}}/conformance/adapters/jco run run:node -- "${flags[@]}" ;;
+        jco-browser)
+            npm --prefix {{root}}/conformance/adapters/jco run run:browser -- "${flags[@]}" ;;
+        *)
+            echo "unknown target {{target}} (wasmtime | jco-node | jco-browser)" >&2
+            exit 1 ;;
+    esac
+    just conformance::classify-partial
