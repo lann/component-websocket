@@ -210,6 +210,18 @@ async fn handle_request(mut req: Request<Incoming>) -> anyhow::Result<Response<E
         // the client observes a failed handshake.
         return Ok(status_only(StatusCode::FORBIDDEN));
     }
+    if path == "/redirect" {
+        // Answer the upgrade with a redirect toward /echo. WebSocket
+        // clients must not follow it (RFC 6455 leaves redirects to the
+        // client, and browsers fail the connection), so the target is
+        // deliberately valid: a client that connected anyway would pass
+        // the echo behavior and fail the row.
+        let mut response = status_only(StatusCode::FOUND);
+        response
+            .headers_mut()
+            .insert(hyper::header::LOCATION, HeaderValue::from_static("/echo"));
+        return Ok(response);
+    }
     if path == "/stall" {
         // Never answer the handshake (bounded so a stuck test cannot leak
         // the socket forever); the client's connect bound must fire first.

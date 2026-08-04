@@ -150,6 +150,12 @@ impl InboundBudget {
     fn overflowed(&self) -> bool {
         self.overflowed.load(Ordering::SeqCst)
     }
+
+    /// Latch the overflow directly (the transport rejected a message past
+    /// its cap before the budget could account it).
+    fn latch_overflow(&self) {
+        self.overflowed.store(true, Ordering::SeqCst);
+    }
 }
 
 /// A connection's inbound-message queue: the receiving half of the pump's
@@ -285,7 +291,7 @@ pub(crate) struct ConnectConfig {
 }
 
 /// Validate a connect URL per the WIT contract: absolute `ws:`/`wss:`, no
-/// fragment.
+/// fragment, no userinfo.
 fn validate_url(url: &str) -> Result<(), String> {
     if url.contains('#') {
         return Err("URL must not have a fragment".to_string());
@@ -300,6 +306,14 @@ fn validate_url(url: &str) -> Result<(), String> {
     }
     if uri.host().is_none_or(str::is_empty) {
         return Err("URL must have a host".to_string());
+    }
+    // The WHATWG WebSocket constructor rejects credentials in the URL; the
+    // eager taxonomy matches that floor uniformly.
+    if uri
+        .authority()
+        .is_some_and(|authority| authority.as_str().contains('@'))
+    {
+        return Err("URL must not have userinfo".to_string());
     }
     Ok(())
 }
@@ -392,9 +406,24 @@ impl Websocket {
             );
         }
 
+        // The transport's own message/frame caps scale with the configured
+        // buffer bound instead of tungstenite's fixed defaults, so an
+        // embedder raising the bound cannot make the transport reject
+        // messages a browser-backed host would deliver (and the budget
+        // would overflow-close). Messages in (bound, cap] take the normal
+        // budget-overflow path; past the cap, the capacity error is mapped
+        // onto the same overflow taxonomy in the pump.
+        let transport_cap = config
+            .max_inbound_buffer_bytes
+            .saturating_mul(2)
+            .max(64 * 1024 * 1024);
+        let ws_config = tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default()
+            .max_message_size(Some(transport_cap))
+            .max_frame_size(Some(transport_cap));
+
         let (ws, response) = match tokio::time::timeout(
             config.connect_timeout,
-            tokio_tungstenite::connect_async(request),
+            tokio_tungstenite::connect_async_with_config(request, Some(ws_config), false),
         )
         .await
         {
@@ -712,6 +741,18 @@ impl Pump {
                         let _ = self.bounded_write(ws.flush()).await;
                     }
                     Some(Ok(_)) => {}
+                    Some(Err(tungstenite::Error::Capacity(_))) => {
+                        // The transport rejected a message past its cap
+                        // (which scales above the buffer bound), so the
+                        // guest-observable outcome is the overflow
+                        // contract, same as a message the budget rejected.
+                        // The read stream is compromised mid-frame; close
+                        // toward the peer and tear down rather than keep
+                        // reading.
+                        self.budget.latch_overflow();
+                        self.begin_close(&mut ws, None).await;
+                        break;
+                    }
                     // A read error or EOF is the transport's verdict either
                     // way; `peer_frame` already records whether a close
                     // frame arrived first.

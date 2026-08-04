@@ -19,9 +19,9 @@ interface types {
     /// contents, and do not expect them to be non-empty — some
     /// implementations cannot observe failure details.
     variant error {
-        /// The supplied URL is not an absolute `ws:` or `wss:` URL without a
-        /// fragment. `connections.websocket.connect` fails with this eagerly,
-        /// before any network activity.
+        /// The supplied URL is not an absolute `ws:` or `wss:` URL, or has
+        /// a fragment or userinfo. `connections.websocket.connect` fails
+        /// with this eagerly, before any network activity.
         invalid-url(string),
         /// The connection attempt failed: name resolution, TCP, TLS, or the
         /// HTTP upgrade handshake (including a server whose subprotocol
@@ -170,10 +170,11 @@ interface connections {
     resource websocket {
         /// Open a WebSocket connection.
         ///
-        /// `url` must be an absolute `ws:` or `wss:` URL without a fragment;
-        /// anything else fails `invalid-url` eagerly. `protocols` is the
-        /// subprotocol offer, possibly empty; a malformed offer (an invalid
-        /// token, or a duplicate entry) fails `invalid-argument` eagerly.
+        /// `url` must be an absolute `ws:` or `wss:` URL without a
+        /// fragment or userinfo; anything else fails `invalid-url` eagerly.
+        /// `protocols` is the subprotocol offer, possibly empty; a
+        /// malformed offer (an invalid token, or a duplicate entry) fails
+        /// `invalid-argument` eagerly.
         ///
         /// The returned future resolves once the WebSocket handshake has
         /// completed and the connection is open, or with `connect-failed`

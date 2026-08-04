@@ -17,6 +17,7 @@ export const TESTS = [
   "connect-invalid-protocols",
   "connect-refused",
   "connect-rejected",
+  "connect-redirect",
   "connect-timeout",
   "subprotocol-negotiated",
   "subprotocol-none-offered",
