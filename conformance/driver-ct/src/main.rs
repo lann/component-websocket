@@ -141,7 +141,7 @@ fn run() -> Result<ExitCode> {
     // per-worker current-thread runtimes drive the websocket host's own
     // I/O. The `RunningServer` moves into the parked future so its
     // drop-shutdown never fires.
-    let (tx, rx) = std::sync::mpsc::channel::<Result<String>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<(String, String)>>();
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
@@ -153,7 +153,7 @@ fn run() -> Result<ExitCode> {
         rt.block_on(async move {
             match conformance_echod::spawn("127.0.0.1:0".parse().unwrap()).await {
                 Ok(server) => {
-                    let _ = tx.send(Ok(server.base_url()));
+                    let _ = tx.send(Ok((server.base_url(), server.tls_base_url())));
                     // Keep the server alive until process exit.
                     let _server = server;
                     std::future::pending::<()>().await;
@@ -164,9 +164,9 @@ fn run() -> Result<ExitCode> {
             }
         });
     });
-    let base_url = rx.recv().context("echo server setup")??;
+    let (base_url, tls_base_url) = rx.recv().context("echo server setup")??;
     let unreachable = unreachable_url()?;
-    eprintln!("echo server: {base_url}");
+    eprintln!("echo server: {base_url} (tls: {tls_base_url})");
 
     let buffer_bytes = MAX_INBOUND_BUFFER_BYTES.to_string();
     let make_data = move || {
@@ -174,9 +174,12 @@ fn run() -> Result<ExitCode> {
         websocket.set_connect_timeout(CONNECT_TIMEOUT);
         websocket.set_close_timeout(CLOSE_TIMEOUT);
         websocket.set_max_inbound_buffer_bytes(MAX_INBOUND_BUFFER_BYTES as usize);
+        // The suite's TLS listener terminates with the committed test PKI.
+        websocket.set_extra_tls_roots_pem(conformance_echod::TEST_CA_PEM);
         Data {
             wasi: WasiCtxBuilder::new()
                 .env("WS_CONFORMANCE_SERVER_URL", &base_url)
+                .env("WS_CONFORMANCE_TLS_SERVER_URL", &tls_base_url)
                 .env("WS_CONFORMANCE_UNREACHABLE_URL", &unreachable)
                 .env("WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
                 .build(),

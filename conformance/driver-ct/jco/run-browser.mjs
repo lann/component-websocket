@@ -52,6 +52,7 @@ const { values } = parseArgs({
     },
     target: { type: "string", default: "jco-browser" },
     server: { type: "string" },
+    "tls-server": { type: "string" },
     "echod-bin": {
       type: "string",
       default: join(REPO_ROOT, "target", "debug", "conformance-echod"),
@@ -179,6 +180,10 @@ async function main() {
 
   const owned = values.server ? null : await spawnEchod(values["echod-bin"]);
   const serverUrl = values.server ?? owned.base;
+  const tlsServerUrl = values["tls-server"] ?? owned?.tlsBase;
+  if (!tlsServerUrl) {
+    throw new Error("--server requires --tls-server (the suite echo server's wss: base URL)");
+  }
   const wasmNames = (await readdir(values.generated)).filter((n) => n.endsWith(".wasm"));
   const server = await startServer(wasmNames);
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -187,7 +192,9 @@ async function main() {
   const browser = await chromium.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    // --ignore-certificate-errors provisions trust for the committed
+    // test PKI (loopback-only browser instance).
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--ignore-certificate-errors"],
   });
 
   let outcome;
@@ -202,6 +209,7 @@ async function main() {
       target: values.target,
       env: [
         ["WS_CONFORMANCE_SERVER_URL", serverUrl],
+        ["WS_CONFORMANCE_TLS_SERVER_URL", tlsServerUrl],
         ["WS_CONFORMANCE_UNREACHABLE_URL", await unreachableUrl()],
         ["WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES", String(256 * 1024)],
       ],

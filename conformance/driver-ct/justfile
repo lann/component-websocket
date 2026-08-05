@@ -71,7 +71,9 @@ run-wasmtime: build-suite build-driver
         --jsonl --jobs 4 --target wasmtime > {{results}}/wasmtime.jsonl
 
 run-jco-node: _jco-prepared
-    {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:node
+    # NODE_EXTRA_CA_CERTS provisions trust for the suite's committed test
+    # PKI; Node reads it at process startup, so it rides the recipe.
+    NODE_EXTRA_CA_CERTS={{root}}/conformance/server/tls/ca.pem {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:node
 
 run-jco-browser: _jco-prepared
     {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:browser

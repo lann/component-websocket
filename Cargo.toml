@@ -31,9 +31,13 @@ component-test-runner = { git = "https://github.com/lann/component-test", rev = 
 anyhow = "1"
 bytes = "1"
 futures = "0.3"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+rustls-pemfile = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
 toml = "0.8"
 wasmtime = { version = "47", features = [

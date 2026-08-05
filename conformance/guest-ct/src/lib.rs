@@ -259,4 +259,19 @@ mod websocket {
             crate::body::case("overflow-oversized-message-pending").await
         }
     }
+
+    mod tls {
+        #[case]
+        async fn echo_roundtrip() -> Verdict {
+            crate::body::case("tls-echo-roundtrip").await
+        }
+        #[case]
+        async fn connect_not_tls() -> Verdict {
+            crate::body::case("tls-connect-not-tls").await
+        }
+        #[case]
+        async fn abrupt_close() -> Verdict {
+            crate::body::case("tls-abrupt-close").await
+        }
+    }
 }

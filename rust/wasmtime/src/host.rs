@@ -341,6 +341,7 @@ impl<T: Send> HostWebsocketWithStore<T> for WasiWebsocket {
                 connect_timeout: ctx.connect_timeout(),
                 close_timeout: ctx.close_timeout(),
                 max_inbound_buffer_bytes: ctx.max_inbound_buffer_bytes(),
+                extra_tls_roots_pem: ctx.extra_tls_roots_pem().map(std::sync::Arc::from),
             }
         });
         match Websocket::connect(url, protocols, config).await {

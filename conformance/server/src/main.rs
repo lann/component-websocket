@@ -20,9 +20,10 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     let server = conformance_echod::spawn(addr).await?;
-    // The LISTENING line is the startup contract adapters scrape; keep it
-    // stable.
-    println!("LISTENING {}", server.base_url());
+    // The LISTENING line is the startup contract adapters scrape; the
+    // first token stays the ws: base URL, the second is the wss: one
+    // (terminated with the committed test PKI — see PROTOCOL.md).
+    println!("LISTENING {} {}", server.base_url(), server.tls_base_url());
     std::future::pending::<()>().await;
     Ok(())
 }

@@ -2,7 +2,7 @@
 
 | Case | jco-browser | jco-node | wasmtime |
 | --- | --- | --- | --- |
-| websocket (52 cases) | pass | pass | pass |
+| websocket (55 cases) | pass | pass | pass |
 
 ## Failures
 
@@ -10,6 +10,6 @@ None.
 
 ## Summary
 
-- `jco-browser`: 52 pass (52 total)
-- `jco-node`: 52 pass (52 total)
-- `wasmtime`: 52 pass (52 total)
+- `jco-browser`: 55 pass (55 total)
+- `jco-node`: 55 pass (55 total)
+- `wasmtime`: 55 pass (55 total)

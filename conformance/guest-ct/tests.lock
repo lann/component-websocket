@@ -3,7 +3,7 @@ version = "0.1"
 
 [suite]
 name = "conformance_guest_ct"
-artifact_sha256 = "9b116e5eaad238d1ecdc414e2e10a9f8237bf2930996619a5fb9470fb7d0afcc"
+artifact_sha256 = "09650c85ed1f1c648e6675af1b3d7b65d728085437793f82a9bba21f03a008b1"
 
 [[case]]
 name = "websocket/close/abnormal"
@@ -160,3 +160,12 @@ name = "websocket/subprotocol/none-selected"
 
 [[case]]
 name = "websocket/subprotocol/unoffered-selected"
+
+[[case]]
+name = "websocket/tls/abrupt-close"
+
+[[case]]
+name = "websocket/tls/connect-not-tls"
+
+[[case]]
+name = "websocket/tls/echo-roundtrip"
