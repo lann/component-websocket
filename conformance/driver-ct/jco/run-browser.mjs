@@ -2,7 +2,9 @@
 // module (js/jco/websocket.js) inside a real headless Chromium — the
 // environment the browser-first host actually targets — emitting
 // component-test results JSONL. Browser counterpart of run-node.mjs;
-// the corpus loop and import wiring live in harness.mjs, shared.
+// the import wiring and suite loop live in harness.mjs, shared, and
+// the page resolves its bare @lann/component-test-js specifiers
+// through an import map onto the served facade files.
 //
 // jco's async ABI needs JSPI; Chrome ships it enabled from 137 onward.
 // The page is served from http://127.0.0.1:<port> and opens ws:
@@ -28,6 +30,18 @@ const SHIM_BROWSER_DIR = join(
   "lib",
   "browser",
 );
+// The upstream runner core's files, wherever npm put them (the package
+// exports resolve to js/viewer/ inside the installed tree).
+const CT_JS_DIR = dirname(
+  fileURLToPath(import.meta.resolve("@lann/component-test-js/harness")),
+);
+
+const IMPORT_MAP = JSON.stringify({
+  imports: {
+    "@lann/component-test-js/harness": "/ct/harness.mjs",
+    "@lann/component-test-js/context": "/ct/context.js",
+  },
+});
 
 const { values } = parseArgs({
   options: {
@@ -52,16 +66,18 @@ const MIME = {
   ".html": "text/html",
 };
 
-/** Serve the transpiled suite, the harness modules, the host module,
- * and the preview2-shim browser build — strict allowlist, no dot
- * segments. */
+/** Serve the transpiled suite, the harness modules (local glue + the
+ * upstream runner core under /ct/, resolved by the page's import map),
+ * the host module, and the preview2-shim browser build — strict
+ * allowlist, no dot segments. */
 function startServer(wasmNames) {
   const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(req.url.split("?")[0]);
     if (pathname === "/") {
       res.setHeader("content-type", "text/html");
       res.end(
-        "<!doctype html><meta charset=utf-8><title>conformance-ct jco browser leg</title><body>",
+        "<!doctype html><meta charset=utf-8><title>conformance-ct jco browser leg</title>" +
+          `<script type="importmap">${IMPORT_MAP}</script><body>`,
       );
       return;
     }
@@ -76,7 +92,7 @@ function startServer(wasmNames) {
       return;
     }
     const match =
-      /^\/(generated|shim)\/([A-Za-z0-9._-]+)$|^\/(websocket\.js|harness\.mjs|context\.js)$/.exec(
+      /^\/(generated|shim|ct)\/([A-Za-z0-9._-]+)$|^\/(websocket\.js|harness\.mjs)$/.exec(
         pathname,
       );
     if (!match || pathname.includes("..")) {
@@ -90,7 +106,9 @@ function startServer(wasmNames) {
         : join(JCO_DIR, match[3])
       : match[1] === "shim"
         ? join(SHIM_BROWSER_DIR, match[2])
-        : join(values.generated, match[2]);
+        : match[1] === "ct"
+          ? join(CT_JS_DIR, match[2])
+          : join(values.generated, match[2]);
     try {
       const body = await readFile(file);
       res.setHeader("content-type", MIME[extname(file)] ?? "application/octet-stream");
@@ -105,10 +123,9 @@ function startServer(wasmNames) {
 
 /** The corpus run performed inside the page (via page.evaluate). */
 async function runInPage({ base, env, target }) {
-  const [{ bindImports, runSuite }, { Context }, connections, { instantiate }, cli, clocks, io] =
+  const [{ bindImports, runSuite }, connections, { instantiate }, cli, clocks, io] =
     await Promise.all([
       import(`${base}/harness.mjs`),
-      import(`${base}/context.js`),
       import(`${base}/websocket.js`),
       import(`${base}/generated/conformance-guest-ct.js`),
       import(`${base}/shim/cli.js`),
@@ -124,16 +141,22 @@ async function runInPage({ base, env, target }) {
 
   const listing = await (await fetch(`${base}/generated-manifest`)).json();
   const modules = new Map();
+  const coreBytes = [];
   for (const name of listing) {
-    modules.set(name, await WebAssembly.compileStreaming(fetch(`${base}/generated/${name}`)));
+    const bytes = new Uint8Array(
+      await (await fetch(`${base}/generated/${name}`)).arrayBuffer(),
+    );
+    coreBytes.push(bytes);
+    modules.set(name, await WebAssembly.compile(bytes));
   }
 
-  const imports = bindImports({ connections, Context, env, cli, clocks, io });
+  const imports = bindImports({ connections, env, cli, clocks, io });
   const newInstance = () => instantiate((name) => modules.get(name), imports);
 
   const lines = [];
   const summary = await runSuite({
     newInstance,
+    coreBytes,
     target,
     suiteName: "conformance_guest_ct",
     emit: (line) => lines.push(line),

@@ -55,7 +55,6 @@ check-js:
     node --check js/componentize/wpt/parity/run-browser.mjs
     node --check js/componentize/wpt/parity/compare.mjs
     node --check conformance/driver-ct/jco/harness.mjs
-    node --check conformance/driver-ct/jco/context.js
     node --check conformance/driver-ct/jco/run-node.mjs
     node --check conformance/driver-ct/jco/run-browser.mjs
     node --check conformance/server/echod.mjs

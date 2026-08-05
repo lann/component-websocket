@@ -12,7 +12,6 @@ import { parseArgs } from "node:util";
 
 import { cli, clocks, io } from "@bytecodealliance/preview2-shim";
 
-import { Context } from "./context.js";
 import { bindImports, runSuite } from "./harness.mjs";
 import { requireNode24, spawnEchod, unreachableUrl } from "../../server/echod.mjs";
 
@@ -48,12 +47,15 @@ const { values } = parseArgs({
 
 async function loadCoreModules(generatedDir) {
   const modules = new Map();
+  const coreBytes = [];
   for (const name of await readdir(generatedDir)) {
     if (name.endsWith(".wasm")) {
-      modules.set(name, await WebAssembly.compile(await readFile(join(generatedDir, name))));
+      const bytes = new Uint8Array(await readFile(join(generatedDir, name)));
+      coreBytes.push(bytes);
+      modules.set(name, await WebAssembly.compile(bytes));
     }
   }
-  return modules;
+  return { modules, coreBytes };
 }
 
 
@@ -65,7 +67,7 @@ async function main() {
     throw new Error(`missing transpiled suite in ${generatedDir}; run "npm run transpile" first`);
   }
   const { instantiate } = await import(join(generatedDir, "conformance-guest-ct.js"));
-  const modules = await loadCoreModules(generatedDir);
+  const { modules, coreBytes } = await loadCoreModules(generatedDir);
 
   const owned = values.server ? null : await spawnEchod(values["echod-bin"]);
   const serverUrl = values.server ?? owned.base;
@@ -76,7 +78,7 @@ async function main() {
     ["WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES", String(MAX_INBOUND_BUFFER_BYTES)],
   ];
 
-  const imports = bindImports({ connections, Context, env, cli, clocks, io });
+  const imports = bindImports({ connections, env, cli, clocks, io });
 
   const newInstance = () => instantiate((name) => modules.get(name), imports);
 
@@ -85,6 +87,7 @@ async function main() {
   try {
     summary = await runSuite({
       newInstance,
+      coreBytes,
       target: values.target,
       suiteName: "conformance_guest_ct",
       emit: (line) => lines.push(line),
