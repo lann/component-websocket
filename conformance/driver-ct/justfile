@@ -1,10 +1,7 @@
-# The component-test conformance harness (migration in progress: all
-# three legs run here; the incumbent harness in ../justfile stays
-# authoritative until the cutover).
-#
-# Builders produce artifacts, runners execute prebuilt artifacts, the
-# aggregate joins result streams against the committed lockfile and
-# targets.toml and diffs the committed matrix.
+# The component-test conformance harness: builders produce artifacts,
+# runners execute prebuilt artifacts, the aggregate joins result
+# streams against the committed lockfile and targets.toml and diffs
+# the committed matrix.
 
 import '../../justfile.shared.just'
 
@@ -13,8 +10,7 @@ import '../../justfile.shared.just'
 # the caps only bound CI-shaped environments.
 timeout_cmd := `command -v timeout >/dev/null 2>&1 && echo "timeout 600" || echo ""`
 
-ct := root / "../component-test"
-ct_cli := ct / "target/debug/component-test"
+ct_cli := root / "target/ct-tools/bin/component-test"
 suite_wasm := root / "target/wasm32-wasip2/release/conformance_guest_ct.wasm"
 results := root / "conformance/driver-ct/results"
 
@@ -32,10 +28,16 @@ build-suite:
 build-driver:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-ct-driver
 
-# The component-test CLI from the sibling checkout (see
-# .component-test-rev; scripts/setup.sh provisions the checkout).
+# The component-test CLI, installed from the same git rev Cargo.lock
+# pins for the library crates (the lock is the single source of truth;
+# same-rev reruns are a no-op "already installed"). No --locked:
+# component-test does not commit a Cargo.lock.
 _ct-tools:
-    cargo build --manifest-path {{ct}}/Cargo.toml -p component-test-cli
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rev="$(grep -om1 'component-test?rev=[0-9a-f]*' '{{root}}/Cargo.lock' | cut -d= -f2)"
+    cargo install --git https://github.com/lann/component-test --rev "$rev" \
+        component-test-cli --root '{{root}}/target/ct-tools'
 
 build-echod:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-echod

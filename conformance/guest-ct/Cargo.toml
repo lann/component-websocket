@@ -10,9 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # The component-test guest SDK owns the tests-contract export and the
-# inventory section (path-dep against the sibling checkout during the
-# migration; see .component-test-rev).
-component-test-sdk = { path = "../../../component-test/crates/component-test-sdk" }
+# inventory section (rev-pinned git dep; see [workspace.dependencies]).
+component-test-sdk = { workspace = true }
 # The SUT bindings (world `sut-imports`): `async` pulls in the
 # component-model stream/future runtime the streaming cases use. The SDK
 # generates the tests contract with its own wit-bindgen (0.60) in its own

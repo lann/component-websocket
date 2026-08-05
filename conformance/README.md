@@ -97,8 +97,14 @@ handshake-blocking workaround.
 
 ## Provisioning
 
-The suite and driver are workspace members with path-deps against a
-sibling `../component-test` checkout pinned by `.component-test-rev`
-(`scripts/setup.sh` provisions it; CI clones it into the workspace and
-symlinks out). Registry dependencies replace this arrangement when
-component-test publishes.
+The suite and driver consume component-test as git-sourced cargo
+dependencies, rev-pinned in the root `Cargo.toml`'s
+`[workspace.dependencies]` (both entries move together; Cargo.lock
+records the resolution). The `component-test` CLI used by the lockfile
+and aggregate recipes is cargo-installed into `target/ct-tools` at the
+rev read back out of Cargo.lock (`conformance-ct::_ct-tools`), so the
+libraries and the CLI cannot drift apart. Registry dependencies replace
+the git pins when component-test publishes. The same applies to any
+future use of component-test's JS: npm git deps, not checkout paths
+(none is consumed today — `driver-ct/jco` implements the harness and
+test-context shim locally).
