@@ -7,6 +7,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 futures = { workspace = true }
+rustls = { workspace = true }
+rustls-native-certs = { workspace = true }
+rustls-pemfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 tokio-tungstenite = { workspace = true }
 wasmtime = { workspace = true }

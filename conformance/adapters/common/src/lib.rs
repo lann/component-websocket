@@ -123,6 +123,9 @@ pub const TESTS: &[&str] = &[
     "receive-buffer-overflow-unacknowledged",
     "overflow-oversized-message",
     "overflow-oversized-message-pending",
+    "tls-echo-roundtrip",
+    "tls-connect-not-tls",
+    "tls-abrupt-close",
 ];
 
 /// Message count/size for count-parameterized tests are owned by the

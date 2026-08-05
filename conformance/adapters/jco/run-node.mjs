@@ -49,6 +49,7 @@ const { values } = parseArgs({
     // Base URL of an already-running echo server. When omitted, this
     // adapter spawns its own `conformance-echod`.
     server: { type: "string" },
+    "tls-server": { type: "string" },
     "echod-bin": {
       type: "string",
       default: join(REPO_ROOT, "target", "debug", "conformance-echod"),
@@ -89,13 +90,18 @@ async function main() {
 
   const owned = values.server ? null : await spawnEchod(values["echod-bin"]);
   const serverUrl = values.server ?? owned.base;
-  process.stderr.write(`echo server ready at ${serverUrl}\n`);
+  const tlsServerUrl = values["tls-server"] ?? owned?.tlsBase;
+  if (!tlsServerUrl) {
+    throw new Error("--server requires --tls-server (the suite echo server's wss: base URL)");
+  }
+  process.stderr.write(`echo server ready at ${serverUrl} (tls: ${tlsServerUrl})\n`);
 
   let results;
   try {
     results = await runCorpus({
       newInstance,
       serverUrl,
+      tlsServerUrl,
       unreachableUrl: await unreachableUrl(),
       only: values.only,
       jobs: values.jobs ? Number(values.jobs) : defaultJobs(),

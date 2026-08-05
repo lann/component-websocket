@@ -268,3 +268,18 @@ description = "a single message larger than the whole buffer bound overflows ins
 id = "overflow-oversized-message-pending"
 tags = ["flow-control", "errors"]
 description = "the buffer bound holds even when a receive is already pending for the oversized message"
+
+[[test]]
+id = "tls-echo-roundtrip"
+tags = ["tls", "connect", "messaging"]
+description = "echo round-trip over the TLS listener; TLS is transparent to the surface once trust is provisioned"
+
+[[test]]
+id = "tls-connect-not-tls"
+tags = ["tls", "connect", "errors"]
+description = "a wss: connect to a non-TLS listener fails connect-failed"
+
+[[test]]
+id = "tls-abrupt-close"
+tags = ["tls", "close", "errors"]
+description = "a mid-connection TLS teardown is an abnormal closure: backlog then closed; wait-closed none"

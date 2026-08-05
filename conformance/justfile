@@ -50,7 +50,9 @@ run-wasmtime:
         --out {{root}}/conformance/results
 
 run-jco-node:
-    {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:node
+    # NODE_EXTRA_CA_CERTS provisions trust for the suite's committed test
+    # PKI; Node reads it at process startup, so it rides the recipe.
+    NODE_EXTRA_CA_CERTS={{root}}/conformance/server/tls/ca.pem {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:node
 
 run-jco-browser:
     {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:browser

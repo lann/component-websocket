@@ -6,20 +6,20 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 
 /**
- * Start `conformance-echod`, returning its `ws:` base URL and a shutdown
- * handle. Rejects if the binary is missing (spawn error) or exits before
- * reporting a URL.
+ * Start `conformance-echod`, returning its `ws:` and `wss:` base URLs and
+ * a shutdown handle. Rejects if the binary is missing (spawn error) or
+ * exits before reporting its URLs.
  */
 export async function spawnEchod(bin) {
   const child = spawn(bin, [], { stdio: ["ignore", "pipe", "inherit"] });
-  const base = await new Promise((resolveUrl, rejectUrl) => {
+  const { base, tlsBase } = await new Promise((resolveUrl, rejectUrl) => {
     let buffer = "";
     const onData = (chunk) => {
       buffer += chunk;
-      const match = /LISTENING (ws:\/\/\S+)/.exec(buffer);
+      const match = /LISTENING (ws:\/\/\S+) (wss:\/\/\S+)/.exec(buffer);
       if (match) {
         child.stdout.off("data", onData);
-        resolveUrl(match[1].trim());
+        resolveUrl({ base: match[1].trim(), tlsBase: match[2].trim() });
       }
     };
     child.stdout.on("data", onData);
@@ -37,6 +37,7 @@ export async function spawnEchod(bin) {
   });
   return {
     base,
+    tlsBase,
     async shutdown() {
       child.kill("SIGTERM");
     },

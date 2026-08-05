@@ -43,6 +43,7 @@ const { values } = parseArgs({
     target: { type: "string", default: "jco-browser" },
     environment: { type: "string", default: "loopback" },
     server: { type: "string" },
+    "tls-server": { type: "string" },
     "echod-bin": {
       type: "string",
       default: join(REPO_ROOT, "target", "debug", "conformance-echod"),
@@ -116,7 +117,7 @@ function startServer(wasmNames) {
  * The corpus run performed inside the browser page. Serialized and
  * evaluated via `page.evaluate`; `base` is this adapter's static server.
  */
-async function runInPage({ base, serverUrl, unreachableUrl, only, jobs }) {
+async function runInPage({ base, serverUrl, tlsServerUrl, unreachableUrl, only, jobs }) {
   const [
     { runCorpus, MAX_INBOUND_BUFFER_BYTES, CONNECT_TIMEOUT_MS, CLOSE_TIMEOUT_MS },
     connections,
@@ -147,6 +148,7 @@ async function runInPage({ base, serverUrl, unreachableUrl, only, jobs }) {
   return runCorpus({
     newInstance,
     serverUrl,
+    tlsServerUrl,
     unreachableUrl,
     only,
     jobs,
@@ -170,6 +172,10 @@ async function main() {
 
   const owned = values.server ? null : await spawnEchod(values["echod-bin"]);
   const serverUrl = values.server ?? owned.base;
+  const tlsServerUrl = values["tls-server"] ?? owned?.tlsBase;
+  if (!tlsServerUrl) {
+    throw new Error("--server requires --tls-server (the suite echo server's wss: base URL)");
+  }
   const wasmNames = (await readdir(values.generated)).filter((n) => n.endsWith(".wasm"));
   const server = await startServer(wasmNames);
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -178,7 +184,9 @@ async function main() {
   const browser = await chromium.launch({
     executablePath,
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    // --ignore-certificate-errors provisions trust for the committed
+    // test PKI (loopback-only browser instance; see issue #4's ruling).
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--ignore-certificate-errors"],
   });
 
   let results;
@@ -191,6 +199,7 @@ async function main() {
     results = await page.evaluate(runInPage, {
       base,
       serverUrl,
+      tlsServerUrl,
       unreachableUrl: await unreachableUrl(),
       only: values.only,
       jobs: values.jobs ? Number(values.jobs) : defaultJobs(),

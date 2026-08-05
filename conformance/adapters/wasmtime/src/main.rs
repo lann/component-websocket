@@ -75,6 +75,8 @@ fn new_store(engine: &Engine) -> Store<Ctx> {
     websocket.set_connect_timeout(CONFORMANCE_CONNECT_TIMEOUT);
     websocket.set_close_timeout(CONFORMANCE_CLOSE_TIMEOUT);
     websocket.set_max_inbound_buffer_bytes(CONFORMANCE_MAX_INBOUND_BUFFER_BYTES as usize);
+    // The suite's TLS listener terminates with the committed test PKI.
+    websocket.set_extra_tls_roots_pem(conformance_echod::TEST_CA_PEM);
     Store::new(
         engine,
         Ctx {
@@ -186,13 +188,15 @@ async fn main() -> Result<()> {
 
     let server = conformance_echod::spawn("127.0.0.1:0".parse().unwrap()).await?;
     let base_url = server.base_url();
+    let tls_base_url = server.tls_base_url();
     let unreachable = unreachable_url().await?;
-    eprintln!("echo server: {base_url}");
+    eprintln!("echo server: {base_url} (tls: {tls_base_url})");
 
     let results: Vec<RawResult> = run_corpus(TESTS, &cli.only, cli.jobs, |test_id| {
         let engine = &engine;
         let component = &component;
         let base_url = base_url.clone();
+        let tls_base_url = tls_base_url.clone();
         let unreachable = unreachable.clone();
         async move {
             conformance_adapter_common::run_test(test_id, TEST_TIMEOUT, async || {
@@ -202,6 +206,7 @@ async fn main() -> Result<()> {
                     test_id,
                     TestConfig {
                         server_url: base_url.clone(),
+                        tls_server_url: tls_base_url.clone(),
                         unreachable_url: unreachable.clone(),
                         max_inbound_buffer_bytes: CONFORMANCE_MAX_INBOUND_BUFFER_BYTES,
                     },

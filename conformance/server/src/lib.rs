@@ -13,6 +13,7 @@
 //! `LISTENING` line. Everything else may change with the tests.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -27,9 +28,18 @@ use hyper_util::rt::TokioIo;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::derive_accept_key;
 use tokio_tungstenite::tungstenite::protocol::{CloseFrame, Message, Role};
 use tokio_tungstenite::WebSocketStream;
+
+/// The committed test PKI (see `tls/` beside this crate and
+/// `scripts/gen-test-tls.sh`). TEST MATERIAL ONLY: the leaf key is public
+/// by design, and nothing outside loopback conformance runs must ever
+/// trust `TEST_CA_PEM`.
+pub const TEST_CA_PEM: &str = include_str!("../tls/ca.pem");
+const TEST_LEAF_PEM: &str = include_str!("../tls/leaf.pem");
+const TEST_LEAF_KEY_PEM: &str = include_str!("../tls/leaf.key.pem");
 
 /// How long `/ignore-close` holds the raw connection open after the client's
 /// close frame goes unanswered, so a misbehaving test cannot leak the socket
@@ -40,18 +50,25 @@ const IGNORE_CLOSE_HOLD: Duration = Duration::from_secs(120);
 const STALL_HOLD: Duration = Duration::from_secs(120);
 
 /// A running echo server; dropping it (or calling [`shutdown`]) stops the
-/// accept loop.
+/// accept loops.
 ///
 /// [`shutdown`]: RunningServer::shutdown
 pub struct RunningServer {
     addr: SocketAddr,
+    tls_addr: SocketAddr,
     shutdown: Option<oneshot::Sender<()>>,
+    tls_shutdown: Option<oneshot::Sender<()>>,
 }
 
 impl RunningServer {
-    /// The bound address.
+    /// The bound plain-TCP address.
     pub fn addr(&self) -> SocketAddr {
         self.addr
+    }
+
+    /// The bound TLS address.
+    pub fn tls_addr(&self) -> SocketAddr {
+        self.tls_addr
     }
 
     /// The `ws:` base URL tests build their connect URLs against.
@@ -59,10 +76,19 @@ impl RunningServer {
         format!("ws://{}", self.addr)
     }
 
+    /// The `wss:` base URL, terminated with the committed test PKI
+    /// ([`TEST_CA_PEM`] is the trust anchor).
+    pub fn tls_base_url(&self) -> String {
+        format!("wss://{}", self.tls_addr)
+    }
+
     /// Stop accepting connections. In-flight connections finish on their
     /// own.
     pub fn shutdown(mut self) {
         if let Some(tx) = self.shutdown.take() {
+            let _ = tx.send(());
+        }
+        if let Some(tx) = self.tls_shutdown.take() {
             let _ = tx.send(());
         }
     }
@@ -73,14 +99,26 @@ impl Drop for RunningServer {
         if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
+        if let Some(tx) = self.tls_shutdown.take() {
+            let _ = tx.send(());
+        }
     }
 }
 
-/// Bind `addr` (use port 0 for an ephemeral port) and serve the protocol in
-/// the background until the returned handle is dropped or shut down.
+/// Bind `addr` (use port 0 for an ephemeral port) plus a TLS listener on
+/// the same host, and serve the protocol on both in the background until
+/// the returned handle is dropped or shut down. Both listeners serve the
+/// identical endpoint tree; the TLS one terminates with the committed
+/// test PKI.
 pub async fn spawn(addr: SocketAddr) -> anyhow::Result<RunningServer> {
     let listener = TcpListener::bind(addr).await.context("bind echo server")?;
     let addr = listener.local_addr()?;
+    let tls_listener = TcpListener::bind((addr.ip(), 0))
+        .await
+        .context("bind TLS echo server")?;
+    let tls_addr = tls_listener.local_addr()?;
+    let acceptor = TlsAcceptor::from(Arc::new(tls_server_config()?));
+
     let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
     tokio::spawn(async move {
         loop {
@@ -88,23 +126,65 @@ pub async fn spawn(addr: SocketAddr) -> anyhow::Result<RunningServer> {
                 _ = &mut shutdown_rx => break,
                 accepted = listener.accept() => {
                     let Ok((stream, _peer)) = accepted else { continue };
+                    tokio::spawn(serve_stream(stream));
+                }
+            }
+        }
+    });
+
+    let (tls_shutdown_tx, mut tls_shutdown_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut tls_shutdown_rx => break,
+                accepted = tls_listener.accept() => {
+                    let Ok((stream, _peer)) = accepted else { continue };
+                    let acceptor = acceptor.clone();
                     tokio::spawn(async move {
-                        let io = TokioIo::new(stream);
-                        let conn = hyper::server::conn::http1::Builder::new()
-                            .serve_connection(io, service_fn(handle_request))
-                            .with_upgrades();
-                        // Connection errors are the client's business to
-                        // observe; the server stays up.
-                        let _ = conn.await;
+                        // A failed TLS handshake is the client's business
+                        // to observe (some tests provoke exactly that).
+                        let Ok(stream) = acceptor.accept(stream).await else { return };
+                        serve_stream(stream).await;
                     });
                 }
             }
         }
     });
+
     Ok(RunningServer {
         addr,
+        tls_addr,
         shutdown: Some(shutdown_tx),
+        tls_shutdown: Some(tls_shutdown_tx),
     })
+}
+
+/// Serve one accepted connection (plain or TLS) with the shared handler.
+async fn serve_stream<S>(stream: S)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let io = TokioIo::new(stream);
+    let conn = hyper::server::conn::http1::Builder::new()
+        .serve_connection(io, service_fn(handle_request))
+        .with_upgrades();
+    // Connection errors are the client's business to observe; the server
+    // stays up.
+    let _ = conn.await;
+}
+
+/// The TLS server configuration from the committed test PKI.
+fn tls_server_config() -> anyhow::Result<rustls::ServerConfig> {
+    let certs = rustls_pemfile::certs(&mut TEST_LEAF_PEM.as_bytes())
+        .collect::<Result<Vec<_>, _>>()
+        .context("parse test leaf certificate")?;
+    let key = rustls_pemfile::private_key(&mut TEST_LEAF_KEY_PEM.as_bytes())
+        .context("parse test leaf key")?
+        .context("no private key in test leaf key PEM")?;
+    rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .context("build TLS server config")
 }
 
 /// A parsed fault/echo mode. See `PROTOCOL.md`.

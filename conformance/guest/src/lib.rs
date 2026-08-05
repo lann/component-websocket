@@ -102,6 +102,9 @@ const CORPUS: &[(&str, &[&str])] = &[
         "overflow-oversized-message-pending",
         &["flow-control", "errors"],
     ),
+    ("tls-echo-roundtrip", &["tls", "connect", "messaging"]),
+    ("tls-connect-not-tls", &["tls", "connect", "errors"]),
+    ("tls-abrupt-close", &["tls", "close", "errors"]),
 ];
 
 /// Message count and payload size for a count-parameterized test. The
@@ -164,6 +167,14 @@ async fn connect(
     Websocket::connect(url, protocols)
         .await
         .map_err(|err| format!("connect {path_query}: {}", describe(&err)))
+}
+
+/// As [`connect`], against the suite server's TLS listener.
+async fn connect_tls(config: &TestConfig, path_query: &str) -> Result<Websocket, String> {
+    let url = format!("{}{}", config.tls_server_url, path_query);
+    Websocket::connect(url, Vec::new())
+        .await
+        .map_err(|err| format!("connect (tls) {path_query}: {}", describe(&err)))
 }
 
 /// A deterministic, index-tagged payload of `size` bytes (minimum 4).
@@ -1456,6 +1467,68 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 Err(other) => Err(format!(
                     "expected receive-buffer-overflow, got {}",
                     describe(&other)
+                )),
+            }
+        }
+        "tls-echo-roundtrip" => {
+            // The same echo contract over the TLS listener: TLS is
+            // transparent to the surface once trust is provisioned.
+            let ws = connect_tls(config, "/echo").await?;
+            let payload = make_payload(0, 256);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            if receive_binary(&ws).await? != payload {
+                return Err("binary echo over TLS corrupted".to_string());
+            }
+            let text = "tls téxt ✓";
+            send(&ws, Message::String(text.to_string())).await?;
+            match receive(&ws).await? {
+                Message::String(echoed) if echoed == text => {}
+                _ => return Err("text echo over TLS corrupted".to_string()),
+            }
+            ws.close(Some(1000), "").map_err(|e| describe(&e))?;
+            match ws.wait_closed().await {
+                Some(info) if info.code == 1000 => Ok(()),
+                Some(info) => Err(format!("expected close code 1000, got {}", info.code)),
+                None => Err("clean TLS close reported abnormal".to_string()),
+            }
+        }
+        "tls-connect-not-tls" => {
+            // A TLS handshake against the plain listener must fail the
+            // connect with connect-failed: the wss: URL points at the
+            // ws: port.
+            let url = format!(
+                "wss{}/echo",
+                config
+                    .server_url
+                    .strip_prefix("ws")
+                    .ok_or("server-url does not start with ws")?
+            );
+            match Websocket::connect(url, Vec::new()).await {
+                Err(Error::ConnectFailed(_)) => Ok(()),
+                Ok(_) => Err("wss: connect to a non-TLS listener succeeded".to_string()),
+                Err(other) => Err(format!("expected connect-failed, got {}", describe(&other))),
+            }
+        }
+        "tls-abrupt-close" => {
+            // A mid-connection TLS teardown (TCP drop under the session,
+            // no close frame, no close_notify) is an abnormal closure:
+            // backlog drains, then closed; wait-closed reports none.
+            let ws = connect_tls(config, "/abrupt-close?after=1").await?;
+            let payload = make_payload(0, 32);
+            send(&ws, Message::Binary(payload.clone())).await?;
+            if receive_binary(&ws).await? != payload {
+                return Err("echo before abrupt TLS close corrupted".to_string());
+            }
+            match ws.receive().await {
+                Err(Error::Closed) => {}
+                Ok(_) => return Err("receive yielded a message after the drop".to_string()),
+                Err(other) => return Err(format!("expected closed, got {}", describe(&other))),
+            }
+            match ws.wait_closed().await {
+                None => Ok(()),
+                Some(info) => Err(format!(
+                    "abnormal TLS closure produced close-info code={} (implementations must not invent one)",
+                    info.code
                 )),
             }
         }

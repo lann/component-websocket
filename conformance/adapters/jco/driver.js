@@ -64,6 +64,9 @@ export const TESTS = [
   "receive-buffer-overflow-unacknowledged",
   "overflow-oversized-message",
   "overflow-oversized-message-pending",
+  "tls-echo-roundtrip",
+  "tls-connect-not-tls",
+  "tls-abrupt-close",
 ];
 
 // Message count/size for count-parameterized tests are owned by the guest
@@ -113,12 +116,13 @@ export function verifyCorpus(guestIds) {
 
 /**
  * Run the corpus. `newInstance` yields a fresh guest instance per test;
- * `serverUrl`/`unreachableUrl` flow into each test's config.
- * Returns result rows in registry order.
+ * `serverUrl`/`tlsServerUrl`/`unreachableUrl` flow into each test's
+ * config. Returns result rows in registry order.
  */
 export async function runCorpus({
   newInstance,
   serverUrl,
+  tlsServerUrl,
   unreachableUrl,
   only = [],
   jobs = 4,
@@ -162,7 +166,7 @@ export async function runCorpus({
       next += 1;
       if (slot >= concurrent.length) return;
       const [testId, index] = concurrent[slot];
-      results[index] = await runOne(serialInstance, testId, serverUrl, unreachableUrl);
+      results[index] = await runOne(serialInstance, testId, serverUrl, tlsServerUrl, unreachableUrl);
       log(`${testId} … ${results[index].status}`);
     }
   };
@@ -170,15 +174,16 @@ export async function runCorpus({
     Array.from({ length: Math.max(1, Math.min(jobs, concurrent.length || 1)) }, worker),
   );
   for (const [testId, index] of serial) {
-    results[index] = await runOne(serialInstance, testId, serverUrl, unreachableUrl);
+    results[index] = await runOne(serialInstance, testId, serverUrl, tlsServerUrl, unreachableUrl);
     log(`${testId} … ${results[index].status}`);
   }
   return results;
 }
 
-async function runOne(newInstance, testId, serverUrl, unreachableUrl) {
+async function runOne(newInstance, testId, serverUrl, tlsServerUrl, unreachableUrl) {
   const config = {
     serverUrl,
+    tlsServerUrl,
     unreachableUrl,
     maxInboundBufferBytes: MAX_INBOUND_BUFFER_BYTES,
   };

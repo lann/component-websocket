@@ -15,6 +15,11 @@ interface runner {
     record test-config {
         /// The `ws:` base URL of the suite echo server (no trailing slash).
         server-url: string,
+        /// The `wss:` base URL of the same echo server's TLS listener (no
+        /// trailing slash). The adapter provisions trust for its
+        /// certificate through the implementation's own channel before
+        /// the run.
+        tls-server-url: string,
         /// A syntactically valid `ws:` URL whose connect attempt must fail
         /// (a closed port on loopback).
         unreachable-url: string,

@@ -283,11 +283,41 @@ pub struct Websocket {
 }
 
 /// Per-connection configuration snapshotted from the context at `connect`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ConnectConfig {
     pub(crate) connect_timeout: Duration,
     pub(crate) close_timeout: Duration,
     pub(crate) max_inbound_buffer_bytes: usize,
+    pub(crate) extra_tls_roots_pem: Option<std::sync::Arc<str>>,
+}
+
+/// Build a `wss:` connector trusting the platform's native roots plus an
+/// extra PEM bundle (see `WasiWebsocketCtx::set_extra_tls_roots_pem`).
+/// Errors render as `connect-failed` diagnostics.
+fn build_tls_connector(extra_roots_pem: &str) -> Result<tokio_tungstenite::Connector, String> {
+    let mut roots = rustls::RootCertStore::empty();
+    let native = rustls_native_certs::load_native_certs();
+    for cert in native.certs {
+        // Unusable native certificates are skipped, matching the default
+        // connector's posture.
+        let _ = roots.add(cert);
+    }
+    let mut extra = std::io::Cursor::new(extra_roots_pem.as_bytes());
+    for cert in rustls_pemfile::certs(&mut extra) {
+        let cert = cert.map_err(|err| format!("extra TLS root does not parse: {err}"))?;
+        roots
+            .add(cert)
+            .map_err(|err| format!("extra TLS root rejected: {err}"))?;
+    }
+    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+    let config = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|err| format!("TLS protocol versions: {err}"))?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    Ok(tokio_tungstenite::Connector::Rustls(std::sync::Arc::new(
+        config,
+    )))
 }
 
 /// Validate a connect URL per the WIT contract: absolute `ws:`/`wss:`, no
@@ -421,9 +451,22 @@ impl Websocket {
             .max_message_size(Some(transport_cap))
             .max_frame_size(Some(transport_cap));
 
+        // With no extra roots configured, tokio-tungstenite's default
+        // connector (native roots) serves wss:; with extra roots, build a
+        // rustls config trusting native roots plus the configured bundle.
+        let connector = match &config.extra_tls_roots_pem {
+            None => None,
+            Some(pem) => Some(build_tls_connector(pem).map_err(WebsocketError::ConnectFailed)?),
+        };
+
         let (ws, response) = match tokio::time::timeout(
             config.connect_timeout,
-            tokio_tungstenite::connect_async_with_config(request, Some(ws_config), false),
+            tokio_tungstenite::connect_async_tls_with_config(
+                request,
+                Some(ws_config),
+                false,
+                connector,
+            ),
         )
         .await
         {

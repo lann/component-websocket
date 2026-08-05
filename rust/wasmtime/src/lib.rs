@@ -58,6 +58,7 @@ pub struct WasiWebsocketCtx {
     connect_timeout: std::time::Duration,
     close_timeout: std::time::Duration,
     max_inbound_buffer_bytes: usize,
+    extra_tls_roots_pem: Option<std::sync::Arc<str>>,
 }
 
 impl Default for WasiWebsocketCtx {
@@ -66,6 +67,7 @@ impl Default for WasiWebsocketCtx {
             connect_timeout: websocket::DEFAULT_CONNECT_TIMEOUT,
             close_timeout: websocket::DEFAULT_CLOSE_TIMEOUT,
             max_inbound_buffer_bytes: DEFAULT_MAX_INBOUND_BUFFER_BYTES,
+            extra_tls_roots_pem: None,
         }
     }
 }
@@ -113,6 +115,21 @@ impl WasiWebsocketCtx {
     /// The configured per-connection inbound buffer bound.
     pub fn max_inbound_buffer_bytes(&self) -> usize {
         self.max_inbound_buffer_bytes
+    }
+
+    /// Add trust anchors for `wss:` connections: a PEM bundle of CA
+    /// certificates trusted *in addition to* the platform's native roots.
+    /// Certificates that do not parse are rejected at the next `connect`
+    /// (`error.connect-failed`), not here. Trust configuration is
+    /// deliberately a host-side knob: the WIT surface carries no trust
+    /// decisions (see the package README's "Portability contract").
+    pub fn set_extra_tls_roots_pem(&mut self, pem: impl Into<std::sync::Arc<str>>) {
+        self.extra_tls_roots_pem = Some(pem.into());
+    }
+
+    /// The configured additional TLS trust anchors, if any.
+    pub fn extra_tls_roots_pem(&self) -> Option<&str> {
+        self.extra_tls_roots_pem.as_deref()
     }
 }
 

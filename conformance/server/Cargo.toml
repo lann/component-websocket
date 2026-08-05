@@ -12,6 +12,8 @@ futures = { workspace = true }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
 tokio = { workspace = true, features = [
     "macros",
     "net",
@@ -20,6 +22,7 @@ tokio = { workspace = true, features = [
     "time",
     "io-util",
 ] }
+tokio-rustls = { workspace = true }
 tokio-tungstenite = { workspace = true }
 
 [dev-dependencies]
