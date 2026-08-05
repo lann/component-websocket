@@ -90,12 +90,12 @@ channel as interchangeable message transports.
 Prerequisites: `rustup`, Node 24+ (the jco runners need JSPI), a
 Chrome/Chromium 137+ for the browser conformance target (discovered from
 the usual locations, or set `CHROME_PATH`), and `./scripts/setup.sh`
-(installs the pinned `wasm-tools`/`just` and the npm trees).
+(installs the pinned `wasm-tools`/`wac`/`just` and the npm trees).
 
 ```sh
 ./scripts/setup.sh
 just check           # fmt + clippy + WIT validation + native tests
-just conformance-ct  # the full matrix: wasmtime, jco-node, jco-browser
+just conformance-ct  # the full matrix: wasmtime, composed, jco-node, jco-browser
 just demo::wasmtime  # the echo demo on the native host
 just demo::node      # the same component under Node + jco
 just ci              # exactly what CI runs
