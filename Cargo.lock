@@ -2307,6 +2307,7 @@ dependencies = [
  "async-trait",
  "bitflags",
  "bumpalo",
+ "bytes",
  "cc",
  "cfg-if",
  "encoding_rs",
@@ -2632,6 +2633,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "websocket-guest-provider"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "rustls-pemfile",
+ "tungstenite",
+ "wit-bindgen 0.59.0",
+]
+
+[[package]]
 name = "wiggle"
 version = "47.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2825,6 +2836,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94c5e45f6d4cfaca727c1c48989ab3e05bb289bf84fbad226e1cfbbef2c04b7f"
 dependencies = [
  "bitflags",
+ "futures",
  "wit-bindgen-rust-macro 0.59.0",
 ]
 

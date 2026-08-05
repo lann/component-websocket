@@ -83,7 +83,7 @@ impl WasiWebsocketView for Data {
 }
 
 const USAGE: &str = "usage: ct-driver <suite.wasm> [--jsonl] [--jobs N] [--target key] \
-                     [--only substring] [--case-timeout secs]";
+                     [--only substring] [--case-timeout secs] [--composed]";
 
 fn main() -> ExitCode {
     match run() {
@@ -101,6 +101,10 @@ fn run() -> Result<ExitCode> {
     let mut jobs: usize = 1;
     let mut target: String = "wasmtime".into();
     let mut only: Option<String> = None;
+    // --composed: the suite wasm embeds the in-guest provider (wac
+    // composition); link full WASI p2+p3 instead of the websocket host,
+    // and provision the provider through its environment channel.
+    let mut composed = false;
     // The incumbent harness's per-test hang guard, kept as the wall
     // bound; the execution budget stays at the runner default (these
     // cases wait on loopback I/O, they don't compute).
@@ -113,6 +117,7 @@ fn run() -> Result<ExitCode> {
         };
         match arg.as_str() {
             "--jsonl" => mode = OutputMode::Jsonl,
+            "--composed" => composed = true,
             "--jobs" => jobs = value("--jobs")?.parse().context("--jobs")?,
             "--target" => target = value("--target")?,
             "--only" => only = Some(value("--only")?),
@@ -176,21 +181,48 @@ fn run() -> Result<ExitCode> {
         websocket.set_max_inbound_buffer_bytes(MAX_INBOUND_BUFFER_BYTES as usize);
         // The suite's TLS listener terminates with the committed test PKI.
         websocket.set_extra_tls_roots_pem(conformance_echod::TEST_CA_PEM);
+        let mut wasi = WasiCtxBuilder::new();
+        wasi.env("WS_CONFORMANCE_SERVER_URL", &base_url)
+            .env("WS_CONFORMANCE_TLS_SERVER_URL", &tls_base_url)
+            .env("WS_CONFORMANCE_UNREACHABLE_URL", &unreachable)
+            .env("WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes);
+        if composed {
+            // The in-guest provider's knob channel is its environment
+            // (see rust/guest-provider/README.md): the same conformance
+            // bounds the hosted legs configure, plus the test CA, plus
+            // real network access for its wasi:sockets imports.
+            wasi.env(
+                "LANN_WEBSOCKET_CONNECT_TIMEOUT_MS",
+                CONNECT_TIMEOUT.as_millis().to_string(),
+            )
+            .env(
+                "LANN_WEBSOCKET_CLOSE_TIMEOUT_MS",
+                CLOSE_TIMEOUT.as_millis().to_string(),
+            )
+            .env("LANN_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
+            .env(
+                "LANN_WEBSOCKET_TLS_ROOTS_PEM",
+                conformance_echod::TEST_CA_PEM,
+            )
+            .inherit_network()
+            .allow_ip_name_lookup(true);
+        }
         Data {
-            wasi: WasiCtxBuilder::new()
-                .env("WS_CONFORMANCE_SERVER_URL", &base_url)
-                .env("WS_CONFORMANCE_TLS_SERVER_URL", &tls_base_url)
-                .env("WS_CONFORMANCE_UNREACHABLE_URL", &unreachable)
-                .env("WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
-                .build(),
+            wasi: wasi.build(),
             table: ResourceTable::new(),
             ct: CtCtx::default(),
             websocket,
         }
     };
 
-    let runner = Runner::with_data(&suite, make_data, |linker| {
-        wasmtime_websocket::add_to_linker(linker)
+    let runner = Runner::with_data(&suite, make_data, move |linker| {
+        if composed {
+            // The composition serves lann:websocket internally over
+            // wasi:sockets; the leg links WASI p3 for those imports.
+            wasmtime_wasi::p3::add_to_linker(linker)
+        } else {
+            wasmtime_websocket::add_to_linker(linker)
+        }
     })?;
     let summary = wasmtime_wasi::runtime::in_tokio(runner.run_suite_opts(
         &suite_name,

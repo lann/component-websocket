@@ -17,7 +17,7 @@ results := root / "conformance/driver-ct/results"
 default: all
 
 # Build + lockfile gate + run every leg + aggregate + matrix gate.
-all: build lock-check run-wasmtime run-jco-node run-jco-browser aggregate matrix-check
+all: build lock-check run-wasmtime run-jco-node run-jco-browser run-composed aggregate matrix-check
 
 # ----- builders ---------------------------------------------------------------
 
@@ -41,6 +41,44 @@ _ct-tools:
 
 build-echod:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-echod
+
+# The in-guest provider (wasm32-wasip2 emits a component directly).
+build-provider:
+    cargo build --manifest-path {{root}}/Cargo.toml --release -p websocket-guest-provider --target wasm32-wasip2
+
+# The lann:tls component, cloned lazily at the rev pinned by
+# rust/guest-provider/tls-component.rev and built from source (the
+# project publishes no artifacts yet). The checkout lives under target/
+# (build territory).
+build-tls-component:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rev="$(cat {{root}}/rust/guest-provider/tls-component.rev)"
+    dir={{root}}/target/deps/component-tls
+    if [ ! -d "$dir/.git" ]; then
+        mkdir -p "$(dirname "$dir")"
+        git clone https://github.com/lann/component-tls "$dir"
+    fi
+    if [ "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]; then
+        git -C "$dir" fetch origin "$rev"
+        git -C "$dir" checkout --detach "$rev"
+    fi
+    cd "$dir"
+    cargo build --release --target wasm32-wasip2 -p lann-tls-component
+
+# The composed leg's component: the suite with its lann:websocket import
+# plugged by the provider (which carries the TLS component for wss:).
+# The composed artifact keeps the suite's file stem (the results
+# envelope names the suite after it; the lockfile must agree) in its own
+# directory.
+compose-suite: build-suite build-provider build-tls-component
+    mkdir -p {{root}}/target/wasm32-wasip2/release/composed
+    wac plug --plug {{root}}/target/deps/component-tls/target/wasm32-wasip2/release/lann_tls_component.wasm \
+        {{root}}/target/wasm32-wasip2/release/websocket_guest_provider.wasm \
+        -o {{root}}/target/wasm32-wasip2/release/composed/websocket-guest-provider-tls.wasm
+    wac plug --plug {{root}}/target/wasm32-wasip2/release/composed/websocket-guest-provider-tls.wasm \
+        {{suite_wasm}} \
+        -o {{root}}/target/wasm32-wasip2/release/composed/conformance_guest_ct.wasm
 
 # npm install + transpile (includes the jco string-lowering patch; the
 # echo/text-unicode case guards it).
@@ -75,6 +113,11 @@ run-jco-node: _jco-prepared
     # PKI; Node reads it at process startup, so it rides the recipe.
     NODE_EXTRA_CA_CERTS={{root}}/conformance/server/tls/ca.pem {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:node
 
+run-composed: compose-suite build-driver build-echod
+    {{timeout_cmd}} {{root}}/target/debug/ct-driver \
+        {{root}}/target/wasm32-wasip2/release/composed/conformance_guest_ct.wasm \
+        --composed --jsonl --jobs 4 --target composed > {{results}}/composed.jsonl
+
 run-jco-browser: _jco-prepared
     {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
 
@@ -85,6 +128,7 @@ aggregate: _ct-tools
         --lock {{root}}/conformance/guest-ct/tests.lock \
         --manifest {{root}}/conformance/driver-ct/targets.toml \
         --results wasmtime={{results}}/wasmtime.jsonl \
+        --results composed={{results}}/composed.jsonl \
         --results jco-node={{results}}/jco-node.jsonl \
         --results jco-browser={{results}}/jco-browser.jsonl \
         -o {{results}}/matrix.md

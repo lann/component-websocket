@@ -1,0 +1,17 @@
+[package]
+name = "websocket-guest-provider"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+futures = { workspace = true }
+rustls-pemfile = { workspace = true }
+tungstenite = { workspace = true }
+wit-bindgen = { workspace = true, features = ["async", "async-spawn", "inter-task-wakeup"] }
+
+[lints.rust]
+missing_docs = "warn"

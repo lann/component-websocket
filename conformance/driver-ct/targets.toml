@@ -20,3 +20,6 @@ missing-features = []
 
 [targets.jco-browser]
 missing-features = []
+
+[targets.composed]
+missing-features = []

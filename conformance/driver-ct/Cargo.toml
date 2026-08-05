@@ -18,4 +18,4 @@ conformance-echod = { path = "../server" }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 wasmtime = { workspace = true }
-wasmtime-wasi = "47"
+wasmtime-wasi = { version = "47", features = ["p3"] }

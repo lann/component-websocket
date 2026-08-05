@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "rust/guest-provider",
     "rust/wasmtime",
     "conformance/server",
     "conformance/guest-ct",
@@ -12,6 +13,7 @@ members = [
 # exactly this set. The wasm-only crates (conformance/guest-ct, echo-demo)
 # build for their wasm targets through the justfile recipes.
 default-members = [
+    "rust/guest-provider",
     "rust/wasmtime",
     "conformance/server",
     "conformance/driver-ct",
@@ -39,6 +41,7 @@ serde_json = "1"
 tokio = "1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
 toml = "0.8"
 wasmtime = { version = "47", features = [
     "component-model",

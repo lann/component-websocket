@@ -25,6 +25,7 @@ fmt-check:
 # each wasm-only crate on its wasm target.
 clippy:
     cargo clippy -- -D warnings
+    cargo clippy --target wasm32-wasip2 -p websocket-guest-provider -- -D warnings
     cargo clippy --target wasm32-unknown-unknown -p echo-demo -- -D warnings
     cargo clippy --target wasm32-wasip2 -p conformance-guest-ct -- -D warnings
 
@@ -34,6 +35,7 @@ validate-wit:
     wasm-tools component wit wit >/dev/null
     wasm-tools component wit rust/wasmtime/wit >/dev/null
     wasm-tools component wit conformance/wit >/dev/null
+    wasm-tools component wit rust/guest-provider/wit >/dev/null
     wasm-tools component wit examples/echo-demo/wit >/dev/null
     @echo "wit: ok"
 
