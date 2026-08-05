@@ -1,7 +1,7 @@
 // Node runner for the echo-demo component: instantiates the transpiled
 // guest with the browser-first host module and drives it against a
-// spawned suite echo server. Requires Node 24+ (JSPI; the npm `start`
-// script supplies the flag).
+// spawned suite echo server. Requires Node 24+ (JSPI; the package's
+// `start` script supplies the flag).
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

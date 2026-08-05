@@ -28,6 +28,7 @@ rust-checks:
     @just gha::_step validate-wit
     @just gha::_step clippy
     @just gha::_step check-js
+    @just gha::_step jco-pin-check
     @just gha::_step test
 
 conformance-checks:

@@ -24,17 +24,17 @@ The leg bodies are engine-neutral (`parity/legs.mjs`); an engine driver
 supplies only the environment. `just wpt::parity-chromium` runs both legs
 inside a headless Chromium (137+ for JSPI): the baseline measures
 Chromium's own `WebSocket`, and the round trip runs the browser-profile
-transpile (`npm run transpile:web` — wasi mapped to the preview2-shim
+transpile (`pnpm run transpile:web` — wasi mapped to the preview2-shim
 browser build, `wasi:sockets` to `parity/sockets-stub.mjs`), served from a
 static mirror of the repository layout so every relative import resolves
 unbundled. Each engine ratchets separately (`parity/losses-chromium.js`,
 re-recorded with `just wpt::update-losses-chromium`): a loss set is a fact
 about one engine's baseline.
 
-The Chromium round-trip leg is currently blocked on an upstream
-componentize-js/jco event-delivery race (issue #18): the baseline leg is
-green, the recipes are the probe for the fix, and the gate joins CI when
-the round trip completes.
+The Chromium gate is currently blocked at the ratchet: some vendored test
+names embed the echo server's per-run port, so the Chromium loss set does
+not record stably (issue #26). Both legs complete; the gate joins CI when
+the ratchet keys are stable.
 
 ## Vendoring policy
 

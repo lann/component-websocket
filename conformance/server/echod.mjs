@@ -63,7 +63,7 @@ export function unreachableUrl() {
 
 /**
  * Fail fast, with the reason, on a Node too old for the jco async ABI
- * (JSPI needs Node 24+; the npm scripts supply the flag).
+ * (JSPI needs Node 24+; the package scripts supply the flag).
  */
 export function requireNode24() {
   const major = Number(process.versions.node.split(".")[0]);

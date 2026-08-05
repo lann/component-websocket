@@ -1,5 +1,5 @@
 // The smoke entry's embedder (`just wpt::smoke`): instantiate the
-// transpiled smoke component against the deferred host module and the
+// transpiled smoke component against the browser-first host module and the
 // suite echo server, and require the streamed marker back.
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

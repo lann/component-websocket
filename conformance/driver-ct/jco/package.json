@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "description": "jco legs (Node + headless browser) for the component-test conformance suite: transpile the suite, bind the browser-first host and the test-context shim, emit component-test results JSONL.",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "transpile": "jco transpile ../../../target/wasm32-wasip2/release/conformance_guest_ct.wasm --name conformance-guest-ct -I async -o generated && node ../../../scripts/patch-jco-string-lowering.mjs generated/conformance-guest-ct.js",
+    "transpile": "node ../../../scripts/jco-transpile.mjs transpile ../../../target/wasm32-wasip2/release/conformance_guest_ct.wasm --name conformance-guest-ct -I async -o generated",
     "run:node": "node --experimental-wasm-jspi run-node.mjs",
     "run:browser": "node run-browser.mjs"
   },
   "devDependencies": {
-    "@bytecodealliance/jco": "^1.26.1",
+    "@bytecodealliance/jco-transpile": "github:lann/jco#fa6990d9def454962fd87ff9b3488873f817490c&path:packages/jco-transpile",
     "@bytecodealliance/preview2-shim": "^0.17.2",
     "@lann/component-test-js": "github:lann/component-test#1917446e19c9e84cd5b9ad8def56d924f60adf61",
     "playwright-core": "^1.61.1"

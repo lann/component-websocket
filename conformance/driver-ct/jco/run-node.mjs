@@ -4,7 +4,7 @@
 // results JSONL for the aggregate.
 //
 // jco's async ABI needs JSPI: Node 24+ with --experimental-wasm-jspi
-// (the npm `run:node` script supplies it).
+// (the package's `run:node` script supplies it).
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

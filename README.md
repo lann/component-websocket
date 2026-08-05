@@ -90,7 +90,8 @@ channel as interchangeable message transports.
 Prerequisites: `rustup`, Node 24+ (the jco runners need JSPI), a
 Chrome/Chromium 137+ for the browser conformance target (discovered from
 the usual locations, or set `CHROME_PATH`), and `./scripts/setup.sh`
-(installs the pinned `wasm-tools`/`wac`/`just` and the npm trees).
+(installs the pinned `wasm-tools`/`wac`/`just`/`pnpm` and the JS package
+trees).
 
 ```sh
 ./scripts/setup.sh

@@ -16,7 +16,7 @@ default:
 ci: (gha::rust-checks) (gha::conformance-checks)
 
 # Fast pre-commit checks.
-check: fmt-check clippy validate-wit check-js test
+check: fmt-check clippy validate-wit check-js jco-pin-check test
 
 fmt-check:
     cargo fmt --all -- --check
@@ -49,7 +49,6 @@ check-js:
     node --check js/componentize/wpt/runner.js
     node --check js/componentize/wpt/smoke.js
     node --check js/componentize/wpt/reporter.js
-    node --check js/componentize/wpt/parity/deferred-connections.mjs
     node --check js/componentize/wpt/parity/sockets-stub.mjs
     node --check js/componentize/wpt/parity/legs.mjs
     node --check js/componentize/wpt/parity/baseline.mjs
@@ -61,10 +60,42 @@ check-js:
     node --check conformance/driver-ct/jco/run-browser.mjs
     node --check conformance/server/echod.mjs
     node --check scripts/chrome.mjs
-    node --check scripts/patch-jco-string-lowering.mjs
+    node --check scripts/jco-transpile.mjs
     node --check examples/jco-demo/run.mjs
     @echo "js: ok"
 
 # Native tests (the workspace default-members).
 test:
     cargo test
+
+# The lann/jco toolchain pin names one rev across all six sites: each JS
+# package tree's package.json dependency spec and its pnpm-workspace.yaml
+# build-script allowlist. Catches a partial bump, which installs cleanly
+# everywhere and drifts silently.
+jco-pin-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=(
+        conformance/driver-ct/jco/package.json
+        conformance/driver-ct/jco/pnpm-workspace.yaml
+        examples/jco-demo/package.json
+        examples/jco-demo/pnpm-workspace.yaml
+        js/componentize/wpt/parity/package.json
+        js/componentize/wpt/parity/pnpm-workspace.yaml
+    )
+    revs=()
+    for f in "${files[@]}"; do
+        rev="$(grep -E 'lann/jco' "$f" | grep -oE '[0-9a-f]{40}' | sort -u)"
+        if [ "$(grep -c . <<<"$rev")" -ne 1 ]; then
+            echo "jco-pin-check: expected exactly one lann/jco rev in $f, found:" >&2
+            printf '%s\n' "$rev" >&2
+            exit 1
+        fi
+        revs+=("$rev")
+    done
+    if [ "$(printf '%s\n' "${revs[@]}" | sort -u | grep -c .)" -ne 1 ]; then
+        echo "jco-pin-check: lann/jco rev differs across pin sites:" >&2
+        paste <(printf '%s\n' "${files[@]}") <(printf '%s\n' "${revs[@]}") >&2
+        exit 1
+    fi
+    echo "jco pin: ${revs[0]} (6 sites)"

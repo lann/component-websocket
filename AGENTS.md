@@ -44,11 +44,16 @@ Layout (each directory's justfile module in parentheses):
   `server/echod.mjs` the shared Node spawn helpers). The suite crates
   consume the harness as rev-pinned git dependencies (the two
   `[workspace.dependencies]` entries in the root `Cargo.toml`), the
-  jco legs consume its JS runner core as an npm git dep
+  jco legs consume its JS runner core as a git dep
   (`@lann/component-test-js` in `driver-ct/jco/package.json`), and the
   `component-test` CLI is cargo-installed at the rev Cargo.lock
   records (`conformance-ct::_ct-tools`). One rev everywhere; the root
-  `Cargo.toml` comment is the bump checklist.
+  `Cargo.toml` comment is the bump checklist. The jco toolchain itself
+  is a second rev-pinned git dep: the three JS package trees (pnpm)
+  build `@bytecodealliance/jco-transpile` from a pinned `lann/jco` rev
+  at install time — bumping it means updating each package.json spec
+  and the matching `onlyBuiltDependencies` entry in each
+  `pnpm-workspace.yaml`, then reinstalling.
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →

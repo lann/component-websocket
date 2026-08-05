@@ -19,8 +19,9 @@ wasmtime count="100": component build-echod
 
 # Run the Node demo by hand: `just demo::node [count]`.
 node count="100": component build-echod
-    npm --prefix {{root}}/examples/jco-demo run transpile
-    npm --prefix {{root}}/examples/jco-demo run start {{count}}
+    pnpm --dir {{root}}/examples/jco-demo install --silent
+    pnpm --dir {{root}}/examples/jco-demo run transpile
+    pnpm --dir {{root}}/examples/jco-demo run start {{count}}
 
 [private]
 build-echod:

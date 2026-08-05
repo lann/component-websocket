@@ -1,26 +1,25 @@
 // The browser parity legs: the same two legs as run-legs.mjs — the shared
 // bodies in legs.mjs — run inside a real, headless Chromium, so the
 // baseline measures Chromium's own `WebSocket` and the round trip runs
-// the browser-profile transpile (`npm run transpile:web`) against
+// the browser-profile transpile (`pnpm run transpile:web`) against
 // websocket-jco in the environment it actually targets. The comparator is
 // the same compare.mjs; the ratchet is per-engine (losses-chromium.js),
 // because a loss set is a fact about one engine's baseline.
 //
 // The static server mirrors the repository layout under an allowlist, so
 // the served modules' relative imports (legs.mjs -> ../harness.js, the
-// generated tree -> ../deferred-connections.mjs -> js/jco/websocket.js,
-// the wasi maps -> the preview2-shim browser build) resolve with no
-// bundling and the same URL identity legs.mjs relies on. The page opens
-// `ws:` connections to the echo server directly: WebSocket is not subject
-// to CORS, and a localhost `http:` page may open `ws:` connections.
+// generated tree -> js/jco/websocket.js, the wasi maps -> the
+// preview2-shim browser build) resolve with no bundling and the same URL
+// identity legs.mjs relies on. The page opens `ws:` connections to the
+// echo server directly: WebSocket is not subject to CORS, and a localhost
+// `http:` page may open `ws:` connections.
 //
 // jco's async ABI needs JSPI; Chrome ships it enabled from 137 onward.
 //
-// KNOWN BLOCKED (issue #18): the round-trip leg currently dies mid-suite
-// in Chromium — jco's driver loop delivers subtask events to recycled
-// waitable slots, and V8 14.x scheduling makes the race lose. The
-// baseline leg is green; this runner is the probe for the upstream fix,
-// and stays out of CI until the round trip completes.
+// KNOWN BLOCKED (issue #26): both legs complete, but several vendored
+// tests interpolate the echo server's per-run port into their names, so
+// the recorded loss set does not key stably across runs. This runner
+// stays out of CI until the ratchet keys are stable.
 //
 // Usage: node run-browser.mjs [--update]
 

@@ -35,7 +35,9 @@ jobs:
 
   conformance:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Headroom over the warm-path duration: a cold pnpm store rebuilds the
+    # jco-transpile git dependency (a cargo release build).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
@@ -45,15 +47,46 @@ jobs:
           shared-key: conformance
           cache-all-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: conformance/driver-ct/jco/package-lock.json
+      # The pnpm store carries the built jco-transpile git dependency, so
+      # a restored store also skips its install-time cargo build. Explicit
+      # restore/save instead of setup-node's `cache: pnpm`: setup-node
+      # restores on the exact lockfile hash only, which would rebuild the
+      # git dependency after any dependency change; the restore-keys
+      # prefix reuses the previous store and rebuilds only what changed.
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path)" >>"$GITHUB_OUTPUT"
+      - name: Restore pnpm store
+        id: pnpm-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Install dependencies
         run: ./scripts/setup.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Save right after the installs, not at job end: a failing
+      # conformance run on main should not force the next run to rebuild.
+      # PR branches restore but never save, so they don't evict main's
+      # caches under the repository cap. `pnpm store prune` drops entries
+      # no longer referenced by the three package trees, so the saved
+      # store does not grow across dependency and pin bumps.
+      - name: Prune and save pnpm store
+        if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        run: pnpm store prune
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
       - run: just gha::conformance-checks
         # The jco-browser adapter finds the runner's preinstalled Chrome via
         # its candidate paths; CHROME_PATH overrides if ever needed.

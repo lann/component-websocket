@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Node runner for the echo-demo component: jco-transpiled guest against the browser-first host and the suite echo server.",
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "transpile": "jco transpile ../../target/components/echo-demo.wasm --name echo-demo -I async -o generated && node ../../scripts/patch-jco-string-lowering.mjs generated/echo-demo.js",
+    "transpile": "node ../../scripts/jco-transpile.mjs transpile ../../target/components/echo-demo.wasm --name echo-demo -I async -o generated",
     "start": "node --experimental-wasm-jspi run.mjs"
   },
   "devDependencies": {
-    "@bytecodealliance/jco": "^1.26.1"
+    "@bytecodealliance/jco-transpile": "github:lann/jco#fa6990d9def454962fd87ff9b3488873f817490c&path:packages/jco-transpile"
   },
   "engines": {
     "node": ">=24"

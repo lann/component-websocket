@@ -30,8 +30,8 @@ const SHIM_BROWSER_DIR = join(
   "lib",
   "browser",
 );
-// The upstream runner core's files, wherever npm put them (the package
-// exports resolve to js/viewer/ inside the installed tree).
+// The upstream runner core's files, wherever the install put them (the
+// package exports resolve to js/viewer/ inside the installed tree).
 const CT_JS_DIR = dirname(
   fileURLToPath(import.meta.resolve("@lann/component-test-js/harness")),
 );

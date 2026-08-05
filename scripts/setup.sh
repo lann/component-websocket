@@ -4,13 +4,18 @@
 # Installs (skipping anything already on PATH):
 #   - the Rust toolchain pinned by rust-toolchain.toml (via rustup)
 #   - wasm-tools, wac, just (via cargo-binstall, versions pinned below)
-#   - npm dependencies for the JS trees (skipped with SKIP_NODE=1)
+#   - pnpm (via npm, version pinned below)
+#   - JS dependencies for the package trees (skipped with SKIP_NODE=1);
+#     the jco-transpile git dependency builds itself on first install
+#     (cargo inside the cloned jco monorepo — the Rust toolchain must be
+#     present), then lands in the pnpm store, so reinstalls are cheap
 #
 # Prerequisites it does NOT install: rustup itself, Node 24+ and npm.
 #
 # Environment overrides:
-#   WASM_TOOLS_VERSION, WAC_VERSION, JUST_VERSION  - tool version pins
-#   SKIP_NODE=1                       - skip all npm installs
+#   WASM_TOOLS_VERSION, WAC_VERSION, JUST_VERSION, PNPM_VERSION
+#                 - tool version pins
+#   SKIP_NODE=1   - skip all JS installs
 #
 # CI runs this same script rather than duplicating install steps.
 set -euo pipefail
@@ -18,6 +23,7 @@ set -euo pipefail
 WASM_TOOLS_VERSION="${WASM_TOOLS_VERSION:-1.247.0}"
 WAC_VERSION="${WAC_VERSION:-0.10.1}"
 JUST_VERSION="${JUST_VERSION:-1.54.0}"
+PNPM_VERSION="${PNPM_VERSION:-10.34.5}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -57,9 +63,12 @@ if ! have just; then
 fi
 
 if [ "${SKIP_NODE:-}" != "1" ]; then
+    if ! have pnpm; then
+        npm install -g "pnpm@${PNPM_VERSION}"
+    fi
     for dir in conformance/driver-ct/jco examples/jco-demo js/componentize/wpt/parity; do
         if [ -f "$REPO_ROOT/$dir/package.json" ]; then
-            (cd "$REPO_ROOT/$dir" && npm install)
+            (cd "$REPO_ROOT/$dir" && pnpm install)
         fi
     done
 fi

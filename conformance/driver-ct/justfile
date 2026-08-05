@@ -80,11 +80,11 @@ compose-suite: build-suite build-provider build-tls-component
         {{suite_wasm}} \
         -o {{root}}/target/wasm32-wasip2/release/composed/conformance_guest_ct.wasm
 
-# npm install + transpile (includes the jco string-lowering patch; the
-# echo/text-unicode case guards it).
+# pnpm install + transpile (the echo/text-unicode case guards the
+# transpiler's string lowering).
 _jco-prepared: build-suite build-echod
-    npm --prefix {{root}}/conformance/driver-ct/jco install --silent
-    npm --prefix {{root}}/conformance/driver-ct/jco run transpile
+    pnpm --dir {{root}}/conformance/driver-ct/jco install --silent
+    pnpm --dir {{root}}/conformance/driver-ct/jco run transpile
 
 build: build-suite build-driver build-echod _ct-tools _jco-prepared
 
@@ -111,7 +111,7 @@ run-wasmtime: build-suite build-driver
 run-jco-node: _jco-prepared
     # NODE_EXTRA_CA_CERTS provisions trust for the suite's committed test
     # PKI; Node reads it at process startup, so it rides the recipe.
-    NODE_EXTRA_CA_CERTS={{root}}/conformance/server/tls/ca.pem {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:node
+    NODE_EXTRA_CA_CERTS={{root}}/conformance/server/tls/ca.pem {{timeout_cmd}} pnpm --dir {{root}}/conformance/driver-ct/jco run run:node
 
 run-composed: compose-suite build-driver build-echod
     {{timeout_cmd}} {{root}}/target/debug/ct-driver \
@@ -120,7 +120,7 @@ run-composed: compose-suite build-driver build-echod
         --jsonl --jobs 4 --target composed > {{results}}/composed.jsonl
 
 run-jco-browser: _jco-prepared
-    {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
+    {{timeout_cmd}} pnpm --dir {{root}}/conformance/driver-ct/jco run run:browser
 
 # ----- aggregation -------------------------------------------------------------
 
