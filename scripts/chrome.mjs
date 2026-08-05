@@ -1,5 +1,5 @@
 // Chrome/Chromium discovery shared by every headless-browser runner (the
-// conformance jco-browser adapter and the WPT parity browser legs).
+// conformance jco-browser leg and the WPT parity browser legs).
 // Node-only.
 import { access, readdir } from "node:fs/promises";
 import { join } from "node:path";

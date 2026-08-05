@@ -1,9 +1,7 @@
 /target/
 node_modules/
-/conformance/results/
 /conformance/driver-ct/results/
 /.component-test/
-/conformance/matrix.md
 build/
 generated/
 generated-smoke/

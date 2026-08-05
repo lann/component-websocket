@@ -16,6 +16,13 @@
 
 import { Context } from "./context.js";
 
+// The single-attempt wall bound per case, matching the wasmtime leg's
+// --case-timeout: a wedged case is reported (limit-exceeded provenance,
+// the component-test vocabulary), never retried, and never allowed to
+// hang the leg. The abandoned attempt's promise keeps running until the
+// leg exits; each case gets a fresh instance anyway.
+const CASE_TIMEOUT_MS = 60_000;
+
 /**
  * The suite's import object, both key spellings (the generated code
  * mixes versioned and unversioned): the SUT host, the test-context
@@ -92,13 +99,31 @@ export async function runSuite({ newInstance, target, suiteName, emit, log }) {
       throw new Error(`case ${name} vanished on re-enumeration`);
     }
     let event;
-    try {
-      await testCase.run(new Context(diagnostics));
+    let timer;
+    const outcome = await Promise.race([
+      testCase.run(new Context(diagnostics)).then(
+        () => ({ kind: "pass" }),
+        (e) => ({ kind: "thrown", e }),
+      ),
+      new Promise((r) => {
+        timer = setTimeout(() => r({ kind: "timeout" }), CASE_TIMEOUT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (outcome.kind === "pass") {
       event = { case: name, status: "pass", provenance: "returned" };
-    } catch (e) {
+    } else if (outcome.kind === "timeout") {
+      failed += 1;
+      event = {
+        case: name,
+        status: "fail",
+        provenance: { "limit-exceeded": "case-timeout" },
+        detail: `case timeout exceeded (${CASE_TIMEOUT_MS / 1000}s)`,
+      };
+    } else {
       // jco maps result::err to a thrown ComponentError with .payload;
       // anything else is a trap (or shim bug), attributed as such.
-      const payload = e?.payload ?? e;
+      const payload = outcome.e?.payload ?? outcome.e;
       if (payload?.tag === "failed") {
         failed += 1;
         event = { case: name, status: "fail", provenance: "returned", detail: payload.val };
@@ -110,12 +135,12 @@ export async function runSuite({ newInstance, target, suiteName, emit, log }) {
           case: name,
           status: "fail",
           provenance: "trap",
-          detail: String(e?.message ?? e).split("\n")[0],
+          detail: String(outcome.e?.message ?? outcome.e).split("\n")[0],
         };
       }
     }
     event.diagnostics = diagnostics;
-    event["diagnostics-complete"] = event.provenance !== "trap";
+    event["diagnostics-complete"] = event.status !== "fail" || event.provenance === "returned";
     emit(JSON.stringify(event));
     log?.(`${name} … ${event.status}`);
   }

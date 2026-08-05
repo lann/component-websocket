@@ -14,13 +14,13 @@ import { cli, clocks, io } from "@bytecodealliance/preview2-shim";
 
 import { Context } from "./context.js";
 import { bindImports, runSuite } from "./harness.mjs";
-import { requireNode24, spawnEchod, unreachableUrl } from "./echod.mjs";
+import { requireNode24, spawnEchod, unreachableUrl } from "../../server/echod.mjs";
 
 requireNode24();
 import * as connections from "../../../js/jco/websocket.js";
 
-// The suite bounds, matching the wasmtime leg (see
-// conformance-adapter-common for why each exists). Connections capture
+// The suite bounds, matching the wasmtime leg (the bound rationale
+// lives on the consts in driver-ct/src/main.rs). Connections capture
 // them at connect, so configuring the module once covers every case.
 const MAX_INBOUND_BUFFER_BYTES = 256 * 1024;
 connections.setMaxInboundBufferBytes(MAX_INBOUND_BUFFER_BYTES);

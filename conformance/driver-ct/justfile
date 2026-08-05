@@ -8,6 +8,11 @@
 
 import '../../justfile.shared.just'
 
+# Hard cap on any single leg, so a wedged run cannot hang a CI job to
+# its timeout. Empty where GNU coreutils' `timeout` is missing (macOS):
+# the caps only bound CI-shaped environments.
+timeout_cmd := `command -v timeout >/dev/null 2>&1 && echo "timeout 600" || echo ""`
+
 ct := root / "../component-test"
 ct_cli := ct / "target/debug/component-test"
 suite_wasm := root / "target/wasm32-wasip2/release/conformance_guest_ct.wasm"
@@ -60,14 +65,14 @@ lock-update: build-suite _ct-tools
 
 run-wasmtime: build-suite build-driver
     mkdir -p {{results}}
-    {{root}}/target/debug/ct-driver {{suite_wasm}} \
+    {{timeout_cmd}} {{root}}/target/debug/ct-driver {{suite_wasm}} \
         --jsonl --jobs 4 --target wasmtime > {{results}}/wasmtime.jsonl
 
 run-jco-node: _jco-prepared
-    npm --prefix {{root}}/conformance/driver-ct/jco run run:node
+    {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:node
 
 run-jco-browser: _jco-prepared
-    npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
+    {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
 
 # ----- aggregation -------------------------------------------------------------
 

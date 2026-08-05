@@ -3,24 +3,17 @@ resolver = "2"
 members = [
     "rust/wasmtime",
     "conformance/server",
-    "conformance/guest",
     "conformance/guest-ct",
-    "conformance/adapters/common",
-    "conformance/adapters/wasmtime",
-    "conformance/runner",
     "conformance/driver-ct",
     "examples/echo-demo",
     "examples/wasmtime-demo",
 ]
 # The native (host-target) crates: bare `cargo clippy` / `cargo test` cover
-# exactly this set. The wasm-only crates (conformance/guest, echo-demo) build
-# for their wasm targets through the justfile recipes.
+# exactly this set. The wasm-only crates (conformance/guest-ct, echo-demo)
+# build for their wasm targets through the justfile recipes.
 default-members = [
     "rust/wasmtime",
     "conformance/server",
-    "conformance/adapters/common",
-    "conformance/adapters/wasmtime",
-    "conformance/runner",
     "conformance/driver-ct",
     "examples/wasmtime-demo",
 ]

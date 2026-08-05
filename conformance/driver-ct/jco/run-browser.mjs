@@ -15,8 +15,8 @@ import { parseArgs } from "node:util";
 
 import { chromium } from "playwright-core";
 
-import { findChrome } from "./chrome.mjs";
-import { spawnEchod, unreachableUrl } from "./echod.mjs";
+import { findChrome } from "../../../scripts/chrome.mjs";
+import { spawnEchod, unreachableUrl } from "../../server/echod.mjs";
 
 const JCO_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(JCO_DIR, "..", "..", "..");

@@ -4,7 +4,6 @@
 import 'justfile.shared.just'
 
 mod gha '.github'
-mod conformance
 mod conformance-ct 'conformance/driver-ct'
 mod demo 'examples'
 mod wpt 'js/componentize/wpt'
@@ -26,7 +25,7 @@ fmt-check:
 # each wasm-only crate on its wasm target.
 clippy:
     cargo clippy -- -D warnings
-    cargo clippy --target wasm32-unknown-unknown -p conformance-guest -p echo-demo -- -D warnings
+    cargo clippy --target wasm32-unknown-unknown -p echo-demo -- -D warnings
     cargo clippy --target wasm32-wasip2 -p conformance-guest-ct -- -D warnings
 
 # Validate every WIT tree: the shared package and each consumer's world
@@ -53,23 +52,16 @@ check-js:
     node --check js/componentize/wpt/parity/legs.mjs
     node --check js/componentize/wpt/parity/baseline.mjs
     node --check js/componentize/wpt/parity/roundtrip.mjs
-    node --check js/componentize/wpt/parity/compare.mjs
-    node --check js/componentize/wpt/parity/run-legs.mjs
     node --check js/componentize/wpt/parity/run-browser.mjs
-    node --check js/componentize/wpt/parity/smoke-run.mjs
+    node --check js/componentize/wpt/parity/compare.mjs
     node --check conformance/driver-ct/jco/harness.mjs
     node --check conformance/driver-ct/jco/context.js
     node --check conformance/driver-ct/jco/run-node.mjs
     node --check conformance/driver-ct/jco/run-browser.mjs
-    node --check conformance/driver-ct/jco/echod.mjs
-    node --check conformance/adapters/jco/driver.js
-    node --check conformance/adapters/jco/chrome.mjs
-    node --check conformance/adapters/jco/echod.mjs
-    node --check conformance/adapters/jco/run-node.mjs
-    node --check conformance/adapters/jco/run-browser.mjs
-    node --check conformance/adapters/jco/record-component-hash.mjs
-    node --check examples/jco-demo/run.mjs
+    node --check conformance/server/echod.mjs
+    node --check scripts/chrome.mjs
     node --check scripts/patch-jco-string-lowering.mjs
+    node --check examples/jco-demo/run.mjs
     @echo "js: ok"
 
 # Native tests (the workspace default-members).
