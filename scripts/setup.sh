@@ -3,19 +3,20 @@
 #
 # Installs (skipping anything already on PATH):
 #   - the Rust toolchain pinned by rust-toolchain.toml (via rustup)
-#   - wasm-tools, just (via cargo-binstall, versions pinned below)
+#   - wasm-tools, wac, just (via cargo-binstall, versions pinned below)
 #   - npm dependencies for the JS trees (skipped with SKIP_NODE=1)
 #
 # Prerequisites it does NOT install: rustup itself, Node 24+ and npm.
 #
 # Environment overrides:
-#   WASM_TOOLS_VERSION, JUST_VERSION  - tool version pins
+#   WASM_TOOLS_VERSION, WAC_VERSION, JUST_VERSION  - tool version pins
 #   SKIP_NODE=1                       - skip all npm installs
 #
 # CI runs this same script rather than duplicating install steps.
 set -euo pipefail
 
 WASM_TOOLS_VERSION="${WASM_TOOLS_VERSION:-1.247.0}"
+WAC_VERSION="${WAC_VERSION:-0.10.1}"
 JUST_VERSION="${JUST_VERSION:-1.54.0}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,6 +48,9 @@ fi
 # the binary itself, which would otherwise make binstall a no-op.
 if ! have wasm-tools; then
     cargo binstall -y --locked --force "wasm-tools@${WASM_TOOLS_VERSION}"
+fi
+if ! have wac; then
+    cargo binstall -y --locked --force "wac-cli@${WAC_VERSION}"
 fi
 if ! have just; then
     cargo binstall -y --locked --force "just@${JUST_VERSION}"
