@@ -1,0 +1,25 @@
+[package]
+name = "conformance-guest-ct"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The conformance suite on the lann:component-test SDK: the incumbent guest's 52 cases as a #[suite] component importing lann:websocket/connections, run by conformance/driver-ct."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The component-test guest SDK owns the tests-contract export and the
+# inventory section (path-dep against the sibling checkout during the
+# migration; see .component-test-rev).
+component-test-sdk = { path = "../../../component-test/crates/component-test-sdk" }
+# The SUT bindings (world `sut-imports`): `async` pulls in the
+# component-model stream/future runtime the streaming cases use. The SDK
+# generates the tests contract with its own wit-bindgen (0.60) in its own
+# crate; the two packages are disjoint and merge at wasm-component-ld.
+wit-bindgen = { workspace = true, features = ["async"] }
+# Concurrent send/receive within a single cooperative task (no OS threads).
+futures = { version = "0.3", default-features = false, features = [
+    "async-await",
+    "alloc",
+] }

@@ -105,3 +105,26 @@ fail the run when they disagree, so follow the order:
   `wit/deps/lann-websocket` symlink.
 - Conformance work must not change production host behavior except where a
   test deliberately drives a fix.
+
+## component-test migration (in progress)
+
+The suite is migrating to the shared
+[`lann:component-test`](https://github.com/lann/component-test)
+infrastructure. `guest-ct/` carries the same 52 cases as a `#[suite]`
+component (bodies ported verbatim from `guest/src/lib.rs`; the flat ids
+map to a name hierarchy by category, e.g. `close-remote` →
+`websocket/close/remote`), and `driver-ct/` is its wasmtime leg:
+`just conformance-ct` builds, checks the committed lockfile (the corpus
+mirror for this harness), runs, aggregates against
+`driver-ct/targets.toml`, and diffs the committed `driver-ct/matrix.md`.
+
+The evolution rules map onto component-test mechanisms one to one:
+`expected-fail` declarations (reason + tracking, unexpected pass fails
+the run) live in `driver-ct/targets.toml` under
+`[[targets.<t>.expected-fail]]`; `unsupported` capability gaps become
+gated features + case tags + a `!feature` decline probe.
+
+Until the cutover, this incumbent harness remains authoritative and
+CI-gating for all three targets; the jco legs of the migrated harness
+and the cutover itself are tracked in issues. Keep `guest-ct/src/body.rs`
+in sync with `guest/src/lib.rs` when cases change.

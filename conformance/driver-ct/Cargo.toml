@@ -1,0 +1,23 @@
+[package]
+name = "conformance-ct-driver"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Host-embed driver for the component-test conformance suite: wasmtime + the native tokio-tungstenite host, in-process echo server, store environment carrying the suite bounds."
+
+[[bin]]
+name = "ct-driver"
+path = "src/main.rs"
+
+[dependencies]
+# The component-test host-embed runner (path-dep against the sibling
+# checkout during the migration; see .component-test-rev).
+component-test-runner = { path = "../../../component-test/crates/component-test-runner" }
+wasmtime-websocket = { path = "../../rust/wasmtime" }
+conformance-echod = { path = "../server" }
+# Suite bounds + the bound-then-released unreachable URL.
+conformance-adapter-common = { path = "../adapters/common" }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+wasmtime = { workspace = true }
+wasmtime-wasi = "47"

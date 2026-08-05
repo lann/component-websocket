@@ -4,9 +4,11 @@ members = [
     "rust/wasmtime",
     "conformance/server",
     "conformance/guest",
+    "conformance/guest-ct",
     "conformance/adapters/common",
     "conformance/adapters/wasmtime",
     "conformance/runner",
+    "conformance/driver-ct",
     "examples/echo-demo",
     "examples/wasmtime-demo",
 ]
@@ -19,6 +21,7 @@ default-members = [
     "conformance/adapters/common",
     "conformance/adapters/wasmtime",
     "conformance/runner",
+    "conformance/driver-ct",
     "examples/wasmtime-demo",
 ]
 

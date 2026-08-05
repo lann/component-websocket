@@ -45,3 +45,11 @@ world conformance {
     import lann:websocket/connections@0.1.0;
     export runner;
 }
+
+/// Imports-only world for the component-test suite (conformance/guest-ct):
+/// the suite's export surface (the `lann:component-test` tests contract)
+/// comes from the component-test SDK, so only the surface under test is
+/// declared here.
+world sut-imports {
+    import lann:websocket/connections@0.1.0;
+}

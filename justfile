@@ -5,6 +5,7 @@ import 'justfile.shared.just'
 
 mod gha '.github'
 mod conformance
+mod conformance-ct 'conformance/driver-ct'
 mod demo 'examples'
 mod wpt 'js/componentize/wpt'
 
@@ -26,6 +27,7 @@ fmt-check:
 clippy:
     cargo clippy -- -D warnings
     cargo clippy --target wasm32-unknown-unknown -p conformance-guest -p echo-demo -- -D warnings
+    cargo clippy --target wasm32-wasip2 -p conformance-guest-ct -- -D warnings
 
 # Validate every WIT tree: the shared package and each consumer's world
 # (which pulls the package in through its deps symlink).
