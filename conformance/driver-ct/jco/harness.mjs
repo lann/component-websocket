@@ -42,7 +42,7 @@ export function bindImports({ connections, env, cli, clocks, io }) {
     imports[versioned] = impl;
   };
   bind("polymorph:websocket/connections", connections);
-  bind("polymorph:component-test/test-context", { Context });
+  bind("polymorph:test/test-context", { Context });
   bind("wasi:cli/environment", envInterface(env));
   bind("wasi:cli/exit", cli.exit);
   bind("wasi:cli/stdin", cli.stdin);

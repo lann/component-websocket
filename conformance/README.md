@@ -1,7 +1,7 @@
 # Conformance suite
 
 Cross-implementation conformance tests for `polymorph:websocket`, on the shared
-[`polymorph:component-test`](https://github.com/polymorph-components/polymorph-test)
+[`polymorph:test`](https://github.com/polymorph-components/polymorph-test)
 infrastructure: one suite component runs the same corpus against every
 implementation, and the aggregate joins the per-target result streams into
 the committed matrix. The suite is the behavioral gate for the package — a

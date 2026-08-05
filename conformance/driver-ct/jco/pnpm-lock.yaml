@@ -15,8 +15,8 @@ importers:
         specifier: ^0.17.2
         version: 0.17.9
       '@polymorph/component-test-js':
-        specifier: github:polymorph-components/polymorph-test#289a8fdcac71b31589d359cd6e715ef81f232220
-        version: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220
+        specifier: github:polymorph-components/polymorph-test#b80c13be7b9fecfed8ec10a91d23d8cf8349defe
+        version: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/b80c13be7b9fecfed8ec10a91d23d8cf8349defe
       playwright-core:
         specifier: ^1.61.1
         version: 1.62.1
@@ -182,8 +182,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220':
-    resolution: {gitHosted: true, integrity: sha512-t8wmHlPUX/dLzjTDR7PqhunUsH6He0yc/zFeXtG3nIu2ilQGhu8jCoTSF3TyBK6y5wfpkX38FZYCqd5JLPof5A==, tarball: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220}
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/b80c13be7b9fecfed8ec10a91d23d8cf8349defe':
+    resolution: {gitHosted: true, integrity: sha512-FSOFPIQsMi5E83WwZvRrRiU6UBZ1WhegHCPOg3Zly7ntycw19KXNN9Vm8Gxjc1E6iL22DkL18aY8huZnfMo3hQ==, tarball: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/b80c13be7b9fecfed8ec10a91d23d8cf8349defe}
     version: 0.2.0
 
   '@tybys/wasm-util@0.10.3':
@@ -311,7 +311,7 @@ snapshots:
   '@oxc-minify/binding-win32-x64-msvc@0.136.0':
     optional: true
 
-  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220': {}
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/b80c13be7b9fecfed8ec10a91d23d8cf8349defe': {}
 
   '@tybys/wasm-util@0.10.3':
     dependencies:

@@ -5,7 +5,7 @@
 package conformance:suite@0.1.0;
 
 /// The suite's world: only the surface under test is declared here —
-/// the export surface (the `polymorph:component-test` tests contract) comes
+/// the export surface (the `polymorph:test` tests contract) comes
 /// from the component-test SDK.
 world sut-imports {
     import polymorph:websocket/connections@0.1.0;

@@ -18,7 +18,7 @@ The repository follows the siblings' conventions: the root `justfile` is
 the single entry point (`just check` for the fast gate, `just ci` for the
 exact CI mirror) with component-scoped module justfiles; `scripts/setup.sh`
 is the idempotent dependency setup CI reuses verbatim; conformance is
-driven by a shared guest suite on the `polymorph:component-test` harness with
+driven by a shared guest suite on the `polymorph:test` harness with
 a per-target driver and `targets.toml` declaring target facts.
 
 Layout (each directory's justfile module in parentheses):
@@ -36,7 +36,7 @@ Layout (each directory's justfile module in parentheses):
   the WPT parity gate (`wpt/README.md` is the vendoring policy; losses
   ratchet in `wpt/parity/losses.js`).
 - `conformance/` (`just conformance-ct`) — the conformance suite on the
-  `polymorph:component-test` harness: `guest-ct/` (the 52-case suite
+  `polymorph:test` harness: `guest-ct/` (the 52-case suite
   component; the committed `tests.lock` is the corpus inventory),
   `driver-ct/` (wasmtime + jco-node + jco-browser + composed legs, `targets.toml`
   with the expected-fail mechanism, the committed `matrix.md`), and
