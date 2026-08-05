@@ -32,8 +32,8 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
 
-import { findChrome } from "../../../../conformance/adapters/jco/chrome.mjs";
-import { spawnEchod } from "../../../../conformance/adapters/jco/echod.mjs";
+import { findChrome } from "../../../../scripts/chrome.mjs";
+import { spawnEchod } from "../../../../conformance/server/echod.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..", "..");

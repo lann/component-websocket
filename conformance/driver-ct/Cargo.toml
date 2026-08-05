@@ -15,8 +15,6 @@ path = "src/main.rs"
 component-test-runner = { path = "../../../component-test/crates/component-test-runner" }
 wasmtime-websocket = { path = "../../rust/wasmtime" }
 conformance-echod = { path = "../server" }
-# Suite bounds + the bound-then-released unreachable URL.
-conformance-adapter-common = { path = "../adapters/common" }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 wasmtime = { workspace = true }

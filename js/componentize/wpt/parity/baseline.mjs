@@ -7,7 +7,7 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { spawnEchod } from "../../../../conformance/adapters/jco/echod.mjs";
+import { spawnEchod } from "../../../../conformance/server/echod.mjs";
 import { runBaseline } from "./legs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

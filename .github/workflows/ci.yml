@@ -59,9 +59,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            conformance/adapters/jco/package-lock.json
-            conformance/driver-ct/jco/package-lock.json
+          cache-dependency-path: conformance/driver-ct/jco/package-lock.json
       - name: Install dependencies
         run: ./scripts/setup.sh
         env:
@@ -74,5 +72,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: conformance-matrix
-          path: conformance/matrix.md
+          path: conformance/driver-ct/results/matrix.md
           if-no-files-found: ignore

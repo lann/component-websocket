@@ -1,7 +1,7 @@
-// Node-only helpers shared by the jco runners (and the jco demo): spawning
-// the suite echo server binary and deriving the unreachable URL. These
-// cannot live in driver.js, which is served into the browser page and must
-// stay environment-agnostic.
+// Node-only helpers for everything that drives the suite echo server
+// (the conformance jco legs, the WPT parity legs, the jco demo):
+// spawning the `conformance-echod` binary and deriving the unreachable
+// URL. Colocated with the server it spawns.
 import { spawn } from "node:child_process";
 import net from "node:net";
 
@@ -26,7 +26,7 @@ export async function spawnEchod(bin) {
     child.on("error", (err) =>
       rejectUrl(
         new Error(
-          `could not start the echo server at ${bin} (build it with \`just conformance::build-echod\`): ${err.message}`,
+          `could not start the echo server at ${bin} (build it with \`just conformance-ct::build-echod\`): ${err.message}`,
         ),
       ),
     );

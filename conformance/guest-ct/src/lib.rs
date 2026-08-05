@@ -1,11 +1,11 @@
 //! The conformance suite as a `lann:component-test` component.
 //!
 //! One `#[case]` per incumbent test row; every body delegates to
-//! [`body`], the verbatim port of the incumbent guest's dispatch
-//! (`conformance/guest/src/lib.rs`), keyed by the incumbent's flat id —
-//! so each delegator documents exactly which row it ports. The flat ids
-//! map to the component-test case-name hierarchy by category (the old
-//! tag vocabulary): `close-remote` → `websocket/close/remote`.
+//! [`body`], the verbatim port of the incumbent guest's dispatch,
+//! keyed by the incumbent's flat id — so each delegator documents
+//! exactly which row it ported. The flat ids map to the component-test
+//! case-name hierarchy by category (the old tag vocabulary):
+//! `close-remote` → `websocket/close/remote`.
 //!
 //! No feature tags: every current target serves the whole surface (the
 //! incumbent's `targets.toml` tables were empty). When a capability gap

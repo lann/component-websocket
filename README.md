@@ -45,10 +45,10 @@ in-guest.
 | Path | Deliverable |
 | --- | --- |
 | [`wit/`](wit) | The `lann:websocket` package: a `types` interface for structural types and a `connections` interface owning the `websocket` resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. Package-wide contracts live in [`wit/README.md`](wit/README.md). |
-| [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the jco conformance adapters. |
+| [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the conformance jco legs. |
 | [`rust/wasmtime`](rust/wasmtime) | The **Wasmtime host crate** (`wasmtime-websocket`): `add_to_linker` + `WasiWebsocketView`, per-store `WasiWebsocketCtx` knobs for the bounds the WIT leaves implementation-defined. |
 | [`js/componentize`](js/componentize) | The **browser-API shim** for componentize-js guests: the WHATWG `WebSocket` interface implemented over the WIT imports — the inverse of `js/jco` — plus the **WPT parity gate**: vendored web-platform-tests run round-trip (shim → WIT → jco → platform WebSocket) and held to the platform baseline's pass set. |
-| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest corpus, a suite-owned echo server with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium), and the runner that classifies results into [the matrix](conformance/README.md). |
+| [`conformance/`](conformance) | The **cross-implementation conformance suite** on the [`lann:component-test`](https://github.com/lann/component-test) harness: a shared guest suite (`guest-ct`, its committed `tests.lock` the corpus inventory), a suite-owned echo server with fault-injection modes, and the driver (`driver-ct`) that runs every target (wasmtime, jco under Node, jco under headless Chromium) into [the matrix](conformance/README.md). |
 | [`examples/`](examples) | The **echo-demo guest component** plus native (`just demo::wasmtime`) and Node (`just demo::node`) runners against the suite echo server. |
 
 The in-guest provider (a WebSocket stack over `wasi:sockets` TCP,
@@ -99,7 +99,7 @@ the usual locations, or set `CHROME_PATH`), and `./scripts/setup.sh`
 ```sh
 ./scripts/setup.sh
 just check           # fmt + clippy + WIT validation + native tests
-just conformance     # the full matrix: wasmtime, jco-node, jco-browser
+just conformance-ct  # the full matrix: wasmtime, jco-node, jco-browser
 just demo::wasmtime  # the echo demo on the native host
 just demo::node      # the same component under Node + jco
 just ci              # exactly what CI runs

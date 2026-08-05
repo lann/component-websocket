@@ -18,8 +18,8 @@ The repository follows the siblings' conventions: the root `justfile` is
 the single entry point (`just check` for the fast gate, `just ci` for the
 exact CI mirror) with component-scoped module justfiles; `scripts/setup.sh`
 is the idempotent dependency setup CI reuses verbatim; conformance is
-driven by a shared guest with per-target adapters and `targets.toml`
-declaring target facts.
+driven by a shared guest suite on the `lann:component-test` harness with
+a per-target driver and `targets.toml` declaring target facts.
 
 Layout (each directory's justfile module in parentheses):
 
@@ -35,29 +35,24 @@ Layout (each directory's justfile module in parentheses):
   shim for componentize-js guests (deviations registry in its header), and
   the WPT parity gate (`wpt/README.md` is the vendoring policy; losses
   ratchet in `wpt/parity/losses.js`).
-- `conformance/` (`just conformance`) — guest, echo server
-  (`server/PROTOCOL.md` is its wire contract), adapters, runner,
-  `tests.toml` + `targets.toml`. The corpus is mirrored in four places
-  (guest `CORPUS`, `adapters/common` `TESTS`, `adapters/jco/driver.js`
-  `TESTS`, `tests.toml`); `verify_corpus` gates the mirrors.
-- `conformance/guest-ct` + `conformance/driver-ct`
-  (`just conformance-ct`) — the same 52 cases on the
-  `lann:component-test` harness, run against all three targets
-  (migration in progress; the cutover is tracked in issues). The
-  committed `guest-ct/tests.lock` replaces the four-way corpus mirror
-  for this harness, and `driver-ct/targets.toml` + the #48
-  expected-fail mechanism replace `targets.toml` declarations. These
-  crates are workspace members with path-deps against a sibling
+- `conformance/` (`just conformance-ct`) — the conformance suite on the
+  `lann:component-test` harness: `guest-ct/` (the 52-case suite
+  component; the committed `tests.lock` is the corpus inventory),
+  `driver-ct/` (wasmtime + jco-node + jco-browser legs, `targets.toml`
+  with the expected-fail mechanism, the committed `matrix.md`), and
+  `server/` (echod; `server/PROTOCOL.md` is its wire contract,
+  `server/echod.mjs` the shared Node spawn helpers). The suite crates
+  are workspace members with path-deps against a sibling
   `../component-test` checkout pinned by `.component-test-rev`
   (`scripts/setup.sh` provisions it) — every workspace-wide cargo
   command needs that sibling.
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →
-`just validate-wit` then `just conformance` (a surface change is
+`just validate-wit` then `just conformance-ct` (a surface change is
 co-dependent across every implementation); either implementation →
-`just conformance`; Rust → `just check`; conformance machinery →
-`just conformance` and `just conformance-ct`; justfiles/CI → `just ci`.
+`just conformance-ct`; Rust → `just check`; conformance machinery →
+`just conformance-ct`; justfiles/CI → `just ci`.
 
 ## Renaming WIT items
 
@@ -69,10 +64,11 @@ places listed failing at run time. The sites:
   `conformance/wit/world.wit`, `examples/echo-demo/wit/world.wit`;
 - `bindgen!` configs (interface paths appear in per-function import
   overrides and `with:` maps): `rust/wasmtime/src/bindings.rs`,
-  `conformance/adapters/wasmtime/src/main.rs`,
   `examples/wasmtime-demo/src/lib.rs`;
-- jco instantiate maps (fail at run time, not build):
-  `conformance/adapters/jco/run-node.mjs`, `run-browser.mjs`,
+- `wit_bindgen::generate!` in the suite (`conformance/guest-ct/src/lib.rs`)
+  and its import paths in `guest-ct/src/body.rs`;
+- jco import bindings (fail at run time, not build):
+  `conformance/driver-ct/jco/harness.mjs` (`bindImports`),
   `examples/jco-demo/run.mjs`;
 - the jco host module's exported class names, which jco maps by resource
   name: `js/jco/websocket.js`.

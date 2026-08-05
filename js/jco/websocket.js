@@ -5,8 +5,8 @@
 // this same file loads unchanged in a browser. Node (22+ ships the
 // browser-compatible `WebSocket` global; 24+ is the suite's runner for
 // JSPI) is just the current runner. It is the single host module shared by
-// the demo runners and the jco conformance adapters
-// (`conformance/adapters/jco`), which import and serve it from this path;
+// the demo runners and the conformance jco legs
+// (`conformance/driver-ct/jco`), which import and serve it from this path;
 // the conformance suite asserts its behavior.
 //
 // `jco --map` wires this module in as the component's `connections` import.

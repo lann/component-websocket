@@ -1,10 +1,9 @@
 //! `ct-driver`: the wasmtime leg of the component-test conformance
 //! harness.
 //!
-//! The component-test analog of `conformance/adapters/wasmtime`: it
-//! embeds the suite echo server in-process, provisions the
+//! Embeds the suite echo server in-process, provisions the
 //! `lann:websocket` host ([`wasmtime_websocket`]) with the suite bounds
-//! (see `conformance-adapter-common` for why each bound exists), hands
+//! (documented on the consts below), hands
 //! the suite its configuration through the store environment
 //! (`WS_CONFORMANCE_*`), and drives the suite with the component-test
 //! runner — which owns scheduling, isolation (fresh instance per case),
@@ -17,12 +16,38 @@ use anyhow::{bail, Context as _, Result};
 use component_test_runner::{
     CtCtx, OutputMode, Runner, RunnerView, DEFAULT_CASE_EXECUTION_BUDGET_SECS,
 };
-use conformance_adapter_common::{
-    CONFORMANCE_CLOSE_TIMEOUT, CONFORMANCE_CONNECT_TIMEOUT, CONFORMANCE_MAX_INBOUND_BUFFER_BYTES,
-    TEST_TIMEOUT,
-};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_websocket::{WasiWebsocketCtx, WasiWebsocketCtxView, WasiWebsocketView};
+
+/// The suite bounds, applied identically by every leg (the jco legs
+/// hardcode the same values through the host module's hooks):
+///
+/// - connect timeout 5s: `connect/timeout` holds a `/stall` handshake
+///   and must fail within the bound, not hang;
+/// - close timeout 3s: `close/handshake-timeout` and
+///   `close/under-send-backpressure` terminate only because the host
+///   gives up on an unanswered close;
+/// - inbound buffer 256 KiB: the overflow rows flood `4 x bound`, so
+///   the guest's stimulus is derived from exactly this value (it rides
+///   the store environment as WS_CONFORMANCE_MAX_INBOUND_BUFFER_BYTES);
+/// - 60s wall bound per case (the runner's `--case-timeout`): the
+///   single-attempt hang guard — no retries, a wedged case is reported,
+///   never masked.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+const MAX_INBOUND_BUFFER_BYTES: u32 = 256 * 1024;
+const CASE_TIMEOUT_SECS: u64 = 60;
+
+/// A loopback `ws:` URL whose connect attempt should be refused: a port
+/// that was just bound and released. The window between release and use
+/// is small but real; a collision surfaces as a `connect/refused`
+/// failure, not a silent pass.
+fn unreachable_url() -> Result<String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let port = listener.local_addr()?.port();
+    drop(listener);
+    Ok(format!("ws://127.0.0.1:{port}/echo"))
+}
 
 /// Per-store host state: WASI (the suite reads its config from the
 /// environment), the runner's diagnostic sink, and the websocket host.
@@ -79,7 +104,7 @@ fn run() -> Result<ExitCode> {
     // The incumbent harness's per-test hang guard, kept as the wall
     // bound; the execution budget stays at the runner default (these
     // cases wait on loopback I/O, they don't compute).
-    let mut case_timeout: u64 = TEST_TIMEOUT.as_secs();
+    let mut case_timeout: u64 = CASE_TIMEOUT_SECS;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = |name: &str| {
@@ -111,12 +136,12 @@ fn run() -> Result<ExitCode> {
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "suite".into());
 
-    // The echo server (and the unreachable-URL mint) live on their own
-    // multi-thread runtime for the lifetime of the process; the runner's
+    // The echo server lives on its own multi-thread runtime for the
+    // lifetime of the process; the runner's
     // per-worker current-thread runtimes drive the websocket host's own
     // I/O. The `RunningServer` moves into the parked future so its
     // drop-shutdown never fires.
-    let (tx, rx) = std::sync::mpsc::channel::<Result<(String, String)>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<String>>();
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
@@ -126,14 +151,9 @@ fn run() -> Result<ExitCode> {
             }
         };
         rt.block_on(async move {
-            let setup = async {
-                let server = conformance_echod::spawn("127.0.0.1:0".parse().unwrap()).await?;
-                let unreachable = conformance_adapter_common::unreachable_url().await?;
-                Ok::<_, anyhow::Error>((server, unreachable))
-            };
-            match setup.await {
-                Ok((server, unreachable)) => {
-                    let _ = tx.send(Ok((server.base_url(), unreachable)));
+            match conformance_echod::spawn("127.0.0.1:0".parse().unwrap()).await {
+                Ok(server) => {
+                    let _ = tx.send(Ok(server.base_url()));
                     // Keep the server alive until process exit.
                     let _server = server;
                     std::future::pending::<()>().await;
@@ -144,15 +164,16 @@ fn run() -> Result<ExitCode> {
             }
         });
     });
-    let (base_url, unreachable) = rx.recv().context("echo server setup")??;
+    let base_url = rx.recv().context("echo server setup")??;
+    let unreachable = unreachable_url()?;
     eprintln!("echo server: {base_url}");
 
-    let buffer_bytes = CONFORMANCE_MAX_INBOUND_BUFFER_BYTES.to_string();
+    let buffer_bytes = MAX_INBOUND_BUFFER_BYTES.to_string();
     let make_data = move || {
         let mut websocket = WasiWebsocketCtx::new();
-        websocket.set_connect_timeout(CONFORMANCE_CONNECT_TIMEOUT);
-        websocket.set_close_timeout(CONFORMANCE_CLOSE_TIMEOUT);
-        websocket.set_max_inbound_buffer_bytes(CONFORMANCE_MAX_INBOUND_BUFFER_BYTES as usize);
+        websocket.set_connect_timeout(CONNECT_TIMEOUT);
+        websocket.set_close_timeout(CLOSE_TIMEOUT);
+        websocket.set_max_inbound_buffer_bytes(MAX_INBOUND_BUFFER_BYTES as usize);
         Data {
             wasi: WasiCtxBuilder::new()
                 .env("WS_CONFORMANCE_SERVER_URL", &base_url)

@@ -1,6 +1,6 @@
-//! The ported case bodies: the incumbent conformance guest's helpers and
-//! `run()` dispatch, verbatim (same assertions, same stimulus, same
-//! one-line failure details), re-plumbed for the component-test suite:
+//! The case bodies: ported verbatim from the incumbent conformance
+//! guest (same assertions, same stimulus, same one-line failure
+//! details), re-plumbed for the component-test suite:
 //!
 //! - `TestConfig` is a local struct populated once from the store
 //!   environment (`WS_CONFORMANCE_*`, set by the driver) instead of a
@@ -11,16 +11,16 @@
 //!   surface and the inventory (lockfile + runner drift cross-check
 //!   replace the four-way corpus mirror).
 //!
-//! Keep bodies in sync with the incumbent guest until the cutover
-//! deletes it; diffs against `conformance/guest/src/lib.rs` are the
-//! review surface for divergence.
+//! Dispatch is keyed by the incumbent's flat case ids (`connect-basic`);
+//! the `#[case]` delegators in [`crate`] map them onto the
+//! component-test case-name hierarchy.
 
 use crate::bindings;
 use crate::bindings::lann::websocket::connections::Websocket;
 use crate::bindings::lann::websocket::types::{Error, Message, MessageKind, WebsocketState};
 
-/// The per-run configuration the incumbent adapters passed as a WIT
-/// record, here read once from the store environment.
+/// The per-run configuration (the incumbent harness passed this as a
+/// WIT record), read once from the store environment.
 pub struct TestConfig {
     pub server_url: String,
     pub unreachable_url: String,

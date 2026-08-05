@@ -31,7 +31,6 @@ rust-checks:
     @just gha::_step test
 
 conformance-checks:
-    @just gha::_step conformance::all
     @just gha::_step conformance-ct::all
     @just gha::_step wpt::parity
     @just gha::_step demo::test

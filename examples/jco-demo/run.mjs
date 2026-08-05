@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 // The demo consumes the suite's echo server and Node helpers (the
 // suite-facing stable surface: the binary's LISTENING line contract).
-import { requireNode24, spawnEchod } from "../../conformance/adapters/jco/echod.mjs";
+import { requireNode24, spawnEchod } from "../../conformance/server/echod.mjs";
 import * as connections from "../../js/jco/websocket.js";
 
 requireNode24();
