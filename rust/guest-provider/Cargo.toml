@@ -9,8 +9,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 futures = { workspace = true }
-getrandom = "0.3"
-url = "2"
+rustls-pemfile = { workspace = true }
+tungstenite = { workspace = true }
 wit-bindgen = { workspace = true, features = ["async", "async-spawn", "inter-task-wakeup"] }
 
 [lints.rust]

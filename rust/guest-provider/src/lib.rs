@@ -24,10 +24,8 @@ mod bindings {
 
 mod config;
 mod connect;
-mod frame;
-mod handshake;
+mod io;
 mod pump;
-mod util;
 
 use std::cell::RefCell;
 use std::rc::Rc;

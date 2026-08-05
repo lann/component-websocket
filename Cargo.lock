@@ -2574,8 +2574,8 @@ name = "websocket-guest-provider"
 version = "0.1.0"
 dependencies = [
  "futures",
- "getrandom 0.3.4",
- "url",
+ "rustls-pemfile",
+ "tungstenite",
  "wit-bindgen 0.59.0",
 ]
 

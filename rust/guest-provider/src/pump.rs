@@ -1,28 +1,29 @@
 //! The per-connection pump: shared state between the resource methods and
 //! two cooperating tasks (a reader owning the inbound half, a command
-//! task owning sends and local close), plus a deadline watchdog.
+//! task owning sends and local close).
 //!
-//! Semantics are a port of the reference host pump
-//! (`rust/wasmtime/src/websocket.rs`); the conformance suite gates the
-//! match. Notable mirrored behaviors: overflow latches and discards the
-//! offending message, closes toward the peer with a code-less frame, and
-//! keeps reading until the handshake completes or the close deadline
-//! fires; a stalled write marks the write side dead and arms the
-//! deadline; `wait-closed` reports the peer's close frame or `none`,
-//! never an invented frame.
+//! The WebSocket protocol itself — framing, masking, fragmentation,
+//! UTF-8 validation, ping/pong, the close-frame exchange — is
+//! tungstenite's sans-IO core over [`VirtualIo`](crate::io), the same
+//! protocol crate the reference host implementation uses, so wire
+//! behavior matches by construction. This file owns what tungstenite
+//! does not: the inbound budget and its overflow contract, the close
+//! deadline, write-side death, and the latched `wait-closed` value —
+//! ported from the reference pump (`rust/wasmtime/src/websocket.rs`) and
+//! gated by the conformance suite.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use futures::channel::{mpsc, oneshot};
 use futures::{FutureExt as _, StreamExt as _};
+use tungstenite::protocol::frame::coding::CloseCode;
+use tungstenite::protocol::CloseFrame;
+use tungstenite::WebSocket;
 
-use crate::bindings::exports::lann::websocket::connections::{CloseInfo, Error, Message};
+use crate::bindings::lann::websocket::types::{CloseInfo, Error, Message};
 use crate::bindings::wasi::clocks::monotonic_clock as clock;
-use crate::frame::{
-    build_frame, close_payload, parse_close_payload, Parsed, Parser, OP_BINARY, OP_CLOSE,
-    OP_CONTINUATION, OP_PING, OP_PONG, OP_TEXT,
-};
+use crate::io::{IoHandle, VirtualIo};
 use crate::Flag;
 
 /// Connection state, forward-only.
@@ -162,7 +163,7 @@ struct PumpFlags {
     /// The close deadline (a monotonic mark), armed at most once.
     deadline: Cell<Option<u64>>,
     deadline_armed: Flag,
-    /// Fired at reader finalization: the command task drains and exits.
+    /// Fired at reader finalization: the command task fails late sends.
     pump_done: Flag,
 }
 
@@ -195,28 +196,27 @@ pub(crate) struct PumpArgs {
     pub(crate) shared: Rc<Shared>,
     pub(crate) in_tx: mpsc::UnboundedSender<Message>,
     pub(crate) cmd_rx: mpsc::UnboundedReceiver<Cmd>,
+    /// The post-handshake protocol state machine.
+    pub(crate) websocket: WebSocket<VirtualIo>,
+    /// The feed/drain handle backing `websocket`'s virtual transport.
+    pub(crate) handle: IoHandle,
     pub(crate) reader: wit_bindgen::StreamReader<u8>,
     pub(crate) writer: wit_bindgen::StreamWriter<u8>,
-    /// Bytes past the handshake response: the start of frame data.
-    pub(crate) leftover: Vec<u8>,
     pub(crate) close_timeout_ns: u64,
-    /// The transport cap: a single message past it takes the
-    /// immediate-teardown overflow path.
-    pub(crate) max_frame_bytes: usize,
     pub(crate) transport: Transport,
 }
 
-/// Spawn the pump: reader task, command task, deadline watchdog.
+/// Spawn the pump: the reader task and the command task.
 pub(crate) fn spawn_pump(args: PumpArgs) {
     let PumpArgs {
         shared,
         in_tx,
         cmd_rx,
+        websocket,
+        handle,
         reader,
         writer,
-        leftover,
         close_timeout_ns,
-        max_frame_bytes,
         transport,
     } = args;
 
@@ -227,68 +227,73 @@ pub(crate) fn spawn_pump(args: PumpArgs) {
         deadline_armed: Flag::new(),
         pump_done: Flag::new(),
     });
-    let writer = Rc::new(WriteHalf {
-        writer: futures::lock::Mutex::new(writer),
+    let proto = Rc::new(Proto {
+        websocket: RefCell::new(websocket),
+        handle,
+        write_lock: futures::lock::Mutex::new(writer),
         flags: Rc::clone(&flags),
-        local_closed_view: Rc::clone(&shared),
+        shared: Rc::clone(&shared),
         close_timeout_ns,
     });
-    let transport = Rc::new(RefCell::new(Some(transport)));
 
-    // Command task: sends and local close, in order.
     {
         let flags = Rc::clone(&flags);
-        let writer = Rc::clone(&writer);
-        wit_bindgen::spawn_local(cmd_task(flags, writer, cmd_rx, close_timeout_ns));
+        let proto = Rc::clone(&proto);
+        wit_bindgen::spawn_local(cmd_task(flags, proto, cmd_rx));
     }
-
-    // Reader task: frames in, close semantics, finalization.
+    let transport = Rc::new(RefCell::new(Some(transport)));
     wit_bindgen::spawn_local(reader_task(
         shared,
         flags,
-        writer,
+        proto,
         in_tx,
         reader,
-        leftover,
-        max_frame_bytes,
         close_timeout_ns,
         transport,
     ));
 }
 
-async fn wait_until(mark: u64) {
-    clock::wait_until(mark).await;
-}
-
-/// The serialized write half. Every write is bounded: it races the close
-/// deadline (arming it when a local close lands mid-write), and a stalled
-/// or failed write marks the side dead — the pump then only reads.
-struct WriteHalf {
-    writer: futures::lock::Mutex<wit_bindgen::StreamWriter<u8>>,
+/// The protocol state machine plus the bounded path from it to the wit
+/// outbound stream. Borrows of `websocket` are never held across an
+/// await: tungstenite writes into the virtual transport synchronously,
+/// and the buffered bytes are flushed to the stream afterwards.
+struct Proto {
+    websocket: RefCell<WebSocket<VirtualIo>>,
+    handle: IoHandle,
+    write_lock: futures::lock::Mutex<wit_bindgen::StreamWriter<u8>>,
     flags: Rc<PumpFlags>,
-    local_closed_view: Rc<Shared>,
+    shared: Rc<Shared>,
     close_timeout_ns: u64,
 }
 
-impl WriteHalf {
-    /// Write a frame, bounded. `Ok(())` means handed to the transport.
-    async fn write(&self, bytes: Vec<u8>) -> Result<(), Error> {
-        let mut writer = self.writer.lock().await;
+impl Proto {
+    /// Flush everything tungstenite has buffered to the wit stream,
+    /// bounded: the write races the close deadline (arming it when a
+    /// local close lands mid-write); a stalled or failed write marks the
+    /// write side dead — the pump then only reads.
+    async fn flush_outbound(&self) -> Result<(), Error> {
+        let mut writer = self.write_lock.lock().await;
+        let bytes = self.handle.drain_outbound();
+        if bytes.is_empty() {
+            return if self.flags.write_dead.get() {
+                Err(Error::Closed)
+            } else {
+                Ok(())
+            };
+        }
         if self.flags.write_dead.get() {
             return Err(Error::Closed);
         }
         let bound = async {
             if self.flags.deadline.get().is_none() {
-                // Not closing yet: a local close arriving mid-write arms
-                // the deadline; the write then gets until the deadline.
-                self.local_closed_view.local_closed.wait().await;
+                self.shared.local_closed.wait().await;
                 self.flags.arm_deadline(self.close_timeout_ns);
             }
             let Some(deadline) = self.flags.deadline.get() else {
                 std::future::pending::<()>().await;
                 return;
             };
-            wait_until(deadline).await;
+            clock::wait_until(deadline).await;
         };
         futures::pin_mut!(bound);
         let write = writer.write_all(bytes);
@@ -310,13 +315,50 @@ impl WriteHalf {
             }
         }
     }
+
+    /// Send one message: hand it to tungstenite, then flush. Error
+    /// mapping mirrors the reference host (`map_write_err`).
+    async fn send(&self, message: Message) -> Result<(), Error> {
+        let ws_message = match message {
+            Message::Binary(bytes) => tungstenite::Message::Binary(bytes.into()),
+            Message::String(text) => tungstenite::Message::Text(text.into()),
+        };
+        let sent = self.websocket.borrow_mut().send(ws_message);
+        match sent {
+            Ok(()) => self.flush_outbound().await,
+            Err(err) => Err(map_write_err(err)),
+        }
+    }
+
+    /// Begin the closing handshake toward the peer (idempotent): arm the
+    /// deadline, queue the close frame, flush.
+    async fn begin_close(&self, frame: Option<CloseFrame>) {
+        if self.flags.wire_closing.replace(true) {
+            return;
+        }
+        self.flags.arm_deadline(self.close_timeout_ns);
+        let closed = self.websocket.borrow_mut().close(frame);
+        if closed.is_ok() {
+            let _ = self.flush_outbound().await;
+        }
+    }
+}
+
+/// The reference host's write-error taxonomy.
+fn map_write_err(err: tungstenite::Error) -> Error {
+    use tungstenite::error::ProtocolError;
+    match err {
+        tungstenite::Error::ConnectionClosed
+        | tungstenite::Error::AlreadyClosed
+        | tungstenite::Error::Protocol(ProtocolError::SendAfterClosing) => Error::Closed,
+        other => Error::Other(other.to_string()),
+    }
 }
 
 async fn cmd_task(
     flags: Rc<PumpFlags>,
-    writer: Rc<WriteHalf>,
+    proto: Rc<Proto>,
     mut cmd_rx: mpsc::UnboundedReceiver<Cmd>,
-    close_timeout_ns: u64,
 ) {
     // Phase 1: the connection is live — sends write, close closes.
     loop {
@@ -326,12 +368,7 @@ async fn cmd_task(
         };
         let Some(cmd) = cmd else {
             // All resource handles dropped: drop implies close(none, "").
-            if !flags.wire_closing.replace(true) {
-                flags.arm_deadline(close_timeout_ns);
-                let _ = writer
-                    .write(build_frame(OP_CLOSE, &close_payload(None, "")))
-                    .await;
-            }
+            proto.begin_close(None).await;
             return;
         };
         match cmd {
@@ -340,20 +377,14 @@ async fn cmd_task(
                     let _ = ack.send(Err(Error::Closed));
                     continue;
                 }
-                let (opcode, payload) = match &message {
-                    Message::Binary(bytes) => (OP_BINARY, bytes.as_slice()),
-                    Message::String(text) => (OP_TEXT, text.as_bytes()),
-                };
-                let result = writer.write(build_frame(opcode, payload)).await;
-                let _ = ack.send(result);
+                let _ = ack.send(proto.send(message).await);
             }
             Cmd::Close { code, reason } => {
-                if !flags.wire_closing.replace(true) {
-                    flags.arm_deadline(close_timeout_ns);
-                    let _ = writer
-                        .write(build_frame(OP_CLOSE, &close_payload(code, &reason)))
-                        .await;
-                }
+                let frame = code.map(|code| CloseFrame {
+                    code: CloseCode::from(code),
+                    reason: reason.into(),
+                });
+                proto.begin_close(frame).await;
             }
             Cmd::ClaimStream { feeder } => {
                 wit_bindgen::spawn_local(feeder);
@@ -377,116 +408,86 @@ async fn cmd_task(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn reader_task(
     shared: Rc<Shared>,
     flags: Rc<PumpFlags>,
-    writer: Rc<WriteHalf>,
+    proto: Rc<Proto>,
     in_tx: mpsc::UnboundedSender<Message>,
     mut reader: wit_bindgen::StreamReader<u8>,
-    leftover: Vec<u8>,
-    max_frame_bytes: usize,
     close_timeout_ns: u64,
     transport: Rc<RefCell<Option<Transport>>>,
 ) {
-    let mut parser = Parser::new(max_frame_bytes);
-    parser.extend(&leftover);
-    // In-progress fragmented message: (is_text, assembled payload).
-    let mut fragments: Option<(bool, Vec<u8>)> = None;
     let mut peer_frame: Option<CloseInfo> = None;
 
     'outer: loop {
-        // Drain every complete frame already buffered before reading more.
+        // Drain every message tungstenite can produce from the bytes fed
+        // so far. Borrows of the state machine end before any await.
         loop {
-            match parser.next_frame() {
-                Parsed::Incomplete => break,
-                Parsed::Violation(_) => break 'outer,
-                Parsed::TooLarge => {
-                    // Mirror the reference's transport-cap path: latch
-                    // overflow, close toward the peer, tear down at once.
-                    shared.overflowed.set(true);
-                    begin_close(&flags, &writer, close_timeout_ns).await;
-                    break 'outer;
-                }
-                Parsed::Frame(frame) => {
-                    match frame.opcode {
-                        OP_TEXT | OP_BINARY => {
-                            if fragments.is_some() {
-                                break 'outer; // new data frame mid-fragmentation
-                            }
-                            let is_text = frame.opcode == OP_TEXT;
-                            if frame.fin {
-                                if !deliver(
-                                    &shared,
-                                    &flags,
-                                    &writer,
-                                    &in_tx,
-                                    is_text,
-                                    frame.payload,
-                                    close_timeout_ns,
-                                )
-                                .await
-                                {
-                                    break 'outer;
-                                }
-                            } else {
-                                fragments = Some((is_text, frame.payload));
-                            }
-                        }
-                        OP_CONTINUATION => {
-                            let Some((is_text, mut assembled)) = fragments.take() else {
-                                break 'outer; // continuation with no start
-                            };
-                            if assembled.len() + frame.payload.len() > max_frame_bytes {
-                                shared.overflowed.set(true);
-                                begin_close(&flags, &writer, close_timeout_ns).await;
-                                break 'outer;
-                            }
-                            assembled.extend_from_slice(&frame.payload);
-                            if frame.fin {
-                                if !deliver(
-                                    &shared,
-                                    &flags,
-                                    &writer,
-                                    &in_tx,
-                                    is_text,
-                                    assembled,
-                                    close_timeout_ns,
-                                )
-                                .await
-                                {
-                                    break 'outer;
-                                }
-                            } else {
-                                fragments = Some((is_text, assembled));
-                            }
-                        }
-                        OP_PING => {
-                            if !flags.write_dead.get() {
-                                let _ = writer.write(build_frame(OP_PONG, &frame.payload)).await;
-                            }
-                        }
-                        OP_PONG => {}
-                        OP_CLOSE => {
-                            let Ok((code, reason)) = parse_close_payload(&frame.payload) else {
-                                break 'outer;
-                            };
-                            if peer_frame.is_none() {
-                                peer_frame = Some(CloseInfo { code, reason });
-                            }
-                            shared.state.advance(WsState::Closing);
-                            flags.arm_deadline(close_timeout_ns);
-                            if !flags.wire_closing.replace(true) {
-                                // Echo the close frame back, completing the
-                                // handshake from our side.
-                                let _ = writer.write(build_frame(OP_CLOSE, &frame.payload)).await;
-                            }
-                            // Keep reading until the peer closes the
-                            // transport (or the deadline fires).
-                        }
-                        _ => break 'outer, // unknown opcode
+            let step = proto.websocket.borrow_mut().read();
+            match step {
+                Ok(tungstenite::Message::Binary(bytes)) => {
+                    deliver(&shared, &flags, &in_tx, Message::Binary(bytes.into())).await;
+                    if shared.overflowed.get() && !flags.wire_closing.get() {
+                        proto.begin_close(None).await;
                     }
                 }
+                Ok(tungstenite::Message::Text(text)) => {
+                    deliver(
+                        &shared,
+                        &flags,
+                        &in_tx,
+                        Message::String(text.as_str().to_string()),
+                    )
+                    .await;
+                    if shared.overflowed.get() && !flags.wire_closing.get() {
+                        proto.begin_close(None).await;
+                    }
+                }
+                Ok(tungstenite::Message::Close(frame)) => {
+                    if peer_frame.is_none() {
+                        peer_frame = Some(match &frame {
+                            Some(frame) => CloseInfo {
+                                code: frame.code.into(),
+                                reason: frame.reason.as_str().to_string(),
+                            },
+                            // A close frame with no body reads as 1005
+                            // with an empty reason.
+                            None => CloseInfo {
+                                code: 1005,
+                                reason: String::new(),
+                            },
+                        });
+                    }
+                    shared.state.advance(WsState::Closing);
+                    flags.arm_deadline(close_timeout_ns);
+                    // tungstenite queued the reply (completing the
+                    // handshake from our side) in the same read.
+                    flags.wire_closing.set(true);
+                    let _ = proto.flush_outbound().await;
+                }
+                // Ping/pong are handled inside tungstenite (the pong is
+                // queued on read); surface nothing, flush the reply.
+                Ok(tungstenite::Message::Ping(_)) | Ok(tungstenite::Message::Pong(_)) => {
+                    let _ = proto.flush_outbound().await;
+                }
+                Ok(tungstenite::Message::Frame(_)) => {}
+                Err(tungstenite::Error::Io(err))
+                    if err.kind() == std::io::ErrorKind::WouldBlock =>
+                {
+                    break;
+                }
+                // A message past the transport cap: latch overflow and
+                // tear down at once (the read stream is compromised).
+                Err(tungstenite::Error::Capacity(_)) => {
+                    shared.overflowed.set(true);
+                    proto.begin_close(None).await;
+                    break 'outer;
+                }
+                // The close handshake completed.
+                Err(tungstenite::Error::ConnectionClosed) => break 'outer,
+                // Everything else (protocol violation, invalid UTF-8, a
+                // real transport error) is an abnormal end.
+                Err(_) => break 'outer,
             }
         }
 
@@ -499,7 +500,7 @@ async fn reader_task(
                 std::future::pending::<()>().await;
                 return;
             };
-            wait_until(deadline).await;
+            clock::wait_until(deadline).await;
         };
         futures::pin_mut!(deadline_expired);
         let read = reader.read(Vec::with_capacity(16 * 1024));
@@ -508,18 +509,55 @@ async fn reader_task(
             () = deadline_expired.fuse() => break,
             result = read.fuse() => result,
         };
-        parser.extend(&chunk);
+        proto.handle.feed(&chunk);
         if matches!(
             status,
             wit_bindgen::StreamResult::Dropped | wit_bindgen::StreamResult::Cancelled
         ) && chunk.is_empty()
         {
+            proto.handle.set_eof();
+            // One final drain so a close frame arriving with EOF still
+            // registers before finalization.
+            loop {
+                let step = proto.websocket.borrow_mut().read();
+                match step {
+                    Ok(tungstenite::Message::Close(frame)) => {
+                        if peer_frame.is_none() {
+                            peer_frame = Some(match &frame {
+                                Some(frame) => CloseInfo {
+                                    code: frame.code.into(),
+                                    reason: frame.reason.as_str().to_string(),
+                                },
+                                None => CloseInfo {
+                                    code: 1005,
+                                    reason: String::new(),
+                                },
+                            });
+                        }
+                        break;
+                    }
+                    Ok(tungstenite::Message::Binary(bytes)) => {
+                        deliver(&shared, &flags, &in_tx, Message::Binary(bytes.into())).await;
+                    }
+                    Ok(tungstenite::Message::Text(text)) => {
+                        deliver(
+                            &shared,
+                            &flags,
+                            &in_tx,
+                            Message::String(text.as_str().to_string()),
+                        )
+                        .await;
+                    }
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+            }
             break;
         }
     }
 
     // Finalization: latch close details, end the queue after the backlog,
-    // stop the command task, tear the transport down, wake wait-closed.
+    // stop accepting sends, tear the transport down, wake wait-closed.
     *shared.close_info.borrow_mut() = Some(peer_frame);
     shared.state.advance(WsState::Closed);
     drop(in_tx);
@@ -528,52 +566,24 @@ async fn reader_task(
     shared.closed.fire();
 }
 
-/// Deliver one complete inbound message, or begin the overflow close.
-/// Returns `false` when the connection must tear down immediately
-/// (delivery only fails that way for text that is not valid UTF-8).
+/// Deliver one complete inbound message under the budget. On overflow the
+/// message is discarded and the latch is set; the caller closes toward
+/// the peer.
 async fn deliver(
     shared: &Rc<Shared>,
     flags: &Rc<PumpFlags>,
-    writer: &Rc<WriteHalf>,
     in_tx: &mpsc::UnboundedSender<Message>,
-    is_text: bool,
-    payload: Vec<u8>,
-    close_timeout_ns: u64,
-) -> bool {
+    message: Message,
+) {
     if flags.wire_closing.get() {
         // Messages arriving during the closing handshake are discarded.
-        return true;
+        return;
     }
-    let message = if is_text {
-        match String::from_utf8(payload) {
-            Ok(text) => Message::String(text),
-            Err(_) => return false,
-        }
-    } else {
-        Message::Binary(payload)
-    };
     let len = match &message {
         Message::Binary(bytes) => bytes.len(),
         Message::String(text) => text.len(),
     };
     if shared.reserve(len) {
         let _ = in_tx.unbounded_send(message);
-    } else {
-        // Overflow: the offending message is discarded, the connection
-        // closes toward the peer, reading continues until the handshake
-        // completes or the deadline fires.
-        begin_close(flags, writer, close_timeout_ns).await;
-    }
-    true
-}
-
-/// Close toward the peer with a code-less frame (the peer observes 1005),
-/// arming the deadline first.
-async fn begin_close(flags: &Rc<PumpFlags>, writer: &Rc<WriteHalf>, close_timeout_ns: u64) {
-    if !flags.wire_closing.replace(true) {
-        flags.arm_deadline(close_timeout_ns);
-        let _ = writer
-            .write(build_frame(OP_CLOSE, &close_payload(None, "")))
-            .await;
     }
 }
