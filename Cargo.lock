@@ -180,7 +180,7 @@ dependencies = [
 [[package]]
 name = "component-test-core"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "arcstr",
  "serde",
@@ -189,7 +189,7 @@ dependencies = [
 [[package]]
 name = "component-test-formats"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "anyhow",
  "component-test-core",
@@ -204,7 +204,7 @@ dependencies = [
 [[package]]
 name = "component-test-results"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "anyhow",
  "component-test-core",
@@ -215,12 +215,13 @@ dependencies = [
 [[package]]
 name = "component-test-runner"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "anyhow",
  "component-test-core",
  "component-test-formats",
  "futures",
+ "libc",
  "serde_json",
  "tokio",
  "wasmtime",
@@ -230,7 +231,7 @@ dependencies = [
 [[package]]
 name = "component-test-sdk"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "component-test-core",
  "component-test-sdk-macro",
@@ -242,7 +243,7 @@ dependencies = [
 [[package]]
 name = "component-test-sdk-macro"
 version = "0.1.0"
-source = "git+https://github.com/lann/component-test?rev=135a395c54fb75e6989c0e4047fd6f2f0db2c62a#135a395c54fb75e6989c0e4047fd6f2f0db2c62a"
+source = "git+https://github.com/lann/component-test?rev=1917446e19c9e84cd5b9ad8def56d924f60adf61#1917446e19c9e84cd5b9ad8def56d924f60adf61"
 dependencies = [
  "component-test-core",
  "proc-macro2",
@@ -1800,7 +1801,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
