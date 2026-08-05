@@ -1,7 +1,6 @@
 /target/
 node_modules/
 /conformance/driver-ct/results/
-/.component-test/
 build/
 generated/
 generated-smoke/

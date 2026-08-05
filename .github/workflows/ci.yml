@@ -19,11 +19,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: rustup show active-toolchain || rustup toolchain install
-      - name: Provision the component-test sibling
-        run: |
-          git clone https://github.com/lann/component-test .component-test
-          git -C .component-test checkout --detach "$(cat .component-test-rev)"
-          ln -s "$PWD/.component-test" ../component-test
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: rust-checks
@@ -45,11 +40,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install Rust toolchain
         run: rustup show active-toolchain || rustup toolchain install
-      - name: Provision the component-test sibling
-        run: |
-          git clone https://github.com/lann/component-test .component-test
-          git -C .component-test checkout --detach "$(cat .component-test-rev)"
-          ln -s "$PWD/.component-test" ../component-test
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: conformance

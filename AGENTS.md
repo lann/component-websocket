@@ -42,10 +42,10 @@ Layout (each directory's justfile module in parentheses):
   with the expected-fail mechanism, the committed `matrix.md`), and
   `server/` (echod; `server/PROTOCOL.md` is its wire contract,
   `server/echod.mjs` the shared Node spawn helpers). The suite crates
-  are workspace members with path-deps against a sibling
-  `../component-test` checkout pinned by `.component-test-rev`
-  (`scripts/setup.sh` provisions it) — every workspace-wide cargo
-  command needs that sibling.
+  consume the harness as rev-pinned git dependencies (the two
+  `[workspace.dependencies]` entries in the root `Cargo.toml`; bump
+  both together), and the `component-test` CLI is cargo-installed at
+  the rev Cargo.lock records (`conformance-ct::_ct-tools`).
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →

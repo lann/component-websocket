@@ -10,9 +10,9 @@ name = "ct-driver"
 path = "src/main.rs"
 
 [dependencies]
-# The component-test host-embed runner (path-dep against the sibling
-# checkout during the migration; see .component-test-rev).
-component-test-runner = { path = "../../../component-test/crates/component-test-runner" }
+# The component-test host-embed runner (rev-pinned git dep; see
+# [workspace.dependencies]).
+component-test-runner = { workspace = true }
 wasmtime-websocket = { path = "../../rust/wasmtime" }
 conformance-echod = { path = "../server" }
 anyhow = { workspace = true }
