@@ -1,34 +1,40 @@
-// Environment-agnostic corpus driver for the component-test suite:
-// instantiates the transpiled suite fresh per case, drives the tests
-// contract, and emits component-test results JSONL (the #26 edge
-// encoding). Runs in Node and inside the browser page unchanged.
+// Leg-shared glue for the jco conformance legs: the SUT import wiring
+// (bindImports) and the thin suite loop over the upstream runner core
+// (@lann/component-test-js — one harness for every runner, per
+// lann/component-test#5; the case loop, verdict mapping, and tag
+// inventory live there, not here). Runs in Node and inside the browser
+// page unchanged (the browser page maps the bare specifiers through an
+// import map; see run-browser.mjs).
 //
-// Scheduling: this harness executes everything and says so —
-// `"scheduling":"none"` in the envelope — so the aggregate applies
-// feature applicability from the lockfile + manifest (the
-// component-test #36 mechanism). No tags-section parsing in JS, no
-// duplicated scheduling semantics to keep in sync.
+// Scheduling: the upstream loop mark-schedules against the tag
+// inventory read from the transpiled core wasm. The suite is untagged
+// and targets.toml declares no features, so `missing` is always empty
+// and every case runs — but the inventory lookup still gates drift:
+// a case the tags section does not cover fails the run as unsound
+// (the jco analog of the wasmtime runner's cross-check).
 //
 // Cases run sequentially: the corpus is loopback-I/O-bound (~tens of
 // seconds total), and sequential execution sidesteps Chromium's
 // per-endpoint handshake serialization (the incumbent driver's
 // HANDSHAKE_BLOCKING workaround) entirely.
 
-import { Context } from "./context.js";
+import { envelope, inventoryLookup, runCases } from "@lann/component-test-js/harness";
+import { Context } from "@lann/component-test-js/context";
 
 // The single-attempt wall bound per case, matching the wasmtime leg's
-// --case-timeout: a wedged case is reported (limit-exceeded provenance,
-// the component-test vocabulary), never retried, and never allowed to
-// hang the leg. The abandoned attempt's promise keeps running until the
-// leg exits; each case gets a fresh instance anyway.
+// --case-timeout: a wedged case is reported (limit-exceeded provenance),
+// never retried, and never allowed to hang the leg. JSPI attempts
+// cannot be cancelled — the abandoned attempt's promise keeps running
+// until the leg exits, which is why every case gets a fresh instance
+// (freshCases below): a timed-out instance may be wedged mid-suspension.
 const CASE_TIMEOUT_MS = 60_000;
 
 /**
  * The suite's import object, both key spellings (the generated code
  * mixes versioned and unversioned): the SUT host, the test-context
- * shim, the config environment, and the wasi shims.
+ * provider (upstream's), the config environment, and the wasi shims.
  */
-export function bindImports({ connections, Context, env, cli, clocks, io }) {
+export function bindImports({ connections, env, cli, clocks, io }) {
   const imports = {};
   const bind = (name, impl) => {
     imports[name] = impl;
@@ -65,86 +71,31 @@ export function envInterface(vars) {
 }
 
 /**
- * Run the whole suite. `newInstance()` must return a fresh instantiated
- * suite (exports object); `emit(line)` receives each JSONL line.
- * Returns `{ total, failed }`.
+ * Run the whole suite through the upstream case loop. `newInstance()`
+ * must return a fresh instantiated suite (exports object) — census and
+ * every case each get their own; `coreBytes` are the transpiled core
+ * wasm bytes carrying the tag inventory; `emit(line)` receives each
+ * JSONL line. Returns `{ total, failed }`.
  */
-export async function runSuite({ newInstance, target, suiteName, emit, log }) {
-  emit(
-    JSON.stringify({
-      "component-test-results": "0.1",
-      target,
-      suite: { name: suiteName },
-      run: { segment: 0, scheduling: "none" },
-    }),
-  );
-
-  // Census from a fresh instance; each case then runs in its own.
+export async function runSuite({ newInstance, coreBytes, target, suiteName, emit, log }) {
+  emit(JSON.stringify(envelope(target, suiteName)));
+  const tagsOf = inventoryLookup(coreBytes);
   const census = await (await newInstance()).tests.all();
-  const names = [];
-  for (const testCase of census) {
-    names.push(testCase.name());
-  }
-  if (names.length === 0) {
+  const counts = await runCases({
+    cases: census,
+    Context,
+    tagsOf,
+    missing: [],
+    emit: (event) => {
+      emit(JSON.stringify(event));
+      log?.(`${event.case} … ${event.status}`);
+    },
+    caseTimeoutMs: CASE_TIMEOUT_MS,
+    freshCases: async () => (await newInstance()).tests.all(),
+  });
+  if (counts.total === 0) {
     throw new Error("suite enumerated zero cases (empty selection is a run error)");
   }
-
-  let failed = 0;
-  for (const name of names) {
-    const diagnostics = [];
-    const instance = await newInstance();
-    const cases = await instance.tests.all();
-    const testCase = cases.find((c) => c.name() === name);
-    if (!testCase) {
-      throw new Error(`case ${name} vanished on re-enumeration`);
-    }
-    let event;
-    let timer;
-    const outcome = await Promise.race([
-      testCase.run(new Context(diagnostics)).then(
-        () => ({ kind: "pass" }),
-        (e) => ({ kind: "thrown", e }),
-      ),
-      new Promise((r) => {
-        timer = setTimeout(() => r({ kind: "timeout" }), CASE_TIMEOUT_MS);
-      }),
-    ]);
-    clearTimeout(timer);
-    if (outcome.kind === "pass") {
-      event = { case: name, status: "pass", provenance: "returned" };
-    } else if (outcome.kind === "timeout") {
-      failed += 1;
-      event = {
-        case: name,
-        status: "fail",
-        provenance: { "limit-exceeded": "case-timeout" },
-        detail: `case timeout exceeded (${CASE_TIMEOUT_MS / 1000}s)`,
-      };
-    } else {
-      // jco maps result::err to a thrown ComponentError with .payload;
-      // anything else is a trap (or shim bug), attributed as such.
-      const payload = outcome.e?.payload ?? outcome.e;
-      if (payload?.tag === "failed") {
-        failed += 1;
-        event = { case: name, status: "fail", provenance: "returned", detail: payload.val };
-      } else if (payload?.tag === "skipped") {
-        event = { case: name, status: "skipped", provenance: "returned", detail: payload.val };
-      } else {
-        failed += 1;
-        event = {
-          case: name,
-          status: "fail",
-          provenance: "trap",
-          detail: String(outcome.e?.message ?? outcome.e).split("\n")[0],
-        };
-      }
-    }
-    event.diagnostics = diagnostics;
-    event["diagnostics-complete"] = event.status !== "fail" || event.provenance === "returned";
-    emit(JSON.stringify(event));
-    log?.(`${name} … ${event.status}`);
-  }
-
   emit(JSON.stringify({ "segment-end": true }));
-  return { total: names.length, failed };
+  return { total: counts.total, failed: counts.failed };
 }

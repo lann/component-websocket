@@ -43,9 +43,12 @@ Layout (each directory's justfile module in parentheses):
   `server/` (echod; `server/PROTOCOL.md` is its wire contract,
   `server/echod.mjs` the shared Node spawn helpers). The suite crates
   consume the harness as rev-pinned git dependencies (the two
-  `[workspace.dependencies]` entries in the root `Cargo.toml`; bump
-  both together), and the `component-test` CLI is cargo-installed at
-  the rev Cargo.lock records (`conformance-ct::_ct-tools`).
+  `[workspace.dependencies]` entries in the root `Cargo.toml`), the
+  jco legs consume its JS runner core as an npm git dep
+  (`@lann/component-test-js` in `driver-ct/jco/package.json`), and the
+  `component-test` CLI is cargo-installed at the rev Cargo.lock
+  records (`conformance-ct::_ct-tools`). One rev everywhere; the root
+  `Cargo.toml` comment is the bump checklist.
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →

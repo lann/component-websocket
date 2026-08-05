@@ -27,7 +27,7 @@ section.
 | --- | --- |
 | [`guest-ct/`](guest-ct) | The suite component: 52 `#[case]`s importing `lann:websocket/connections`, owning **every assertion**. One wasm binary, run unchanged against every target. The committed `tests.lock` is its inventory (drift fails `lock-check` and the runner's own cross-check). |
 | [`server/`](server) | The suite-owned echo/reference server (`conformance-echod`): echo plus the fault modes the close-semantics rows need. Wire contract in [`server/PROTOCOL.md`](server/PROTOCOL.md); `server/echod.mjs` holds the Node-side spawn helpers every JS leg shares. |
-| [`driver-ct/`](driver-ct) | The legs and the aggregate. `ct-driver` (Rust) embeds the wasmtime host; `jco/` runs the transpiled suite in Node and headless Chromium through one shared `harness.mjs`. `targets.toml` declares targets, features, and expected-fail entries; `component-test aggregate` validates and renders the matrix. |
+| [`driver-ct/`](driver-ct) | The legs and the aggregate. `ct-driver` (Rust) embeds the wasmtime host; `jco/` runs the transpiled suite in Node and headless Chromium through one shared `harness.mjs` — thin glue (SUT import wiring, config) over the upstream runner core (`@lann/component-test-js`, the npm git dep), which owns the case loop, verdict mapping, and tag-inventory drift check. `targets.toml` declares targets, features, and expected-fail entries; `component-test aggregate` validates and renders the matrix. |
 | [`wit/`](wit) | The suite's world (`sut-imports`): only the surface under test — the export surface comes from the component-test SDK. The `lann:websocket` package arrives through the `deps/lann-websocket` symlink, never a copy. |
 
 ### The result stream
@@ -104,7 +104,8 @@ records the resolution). The `component-test` CLI used by the lockfile
 and aggregate recipes is cargo-installed into `target/ct-tools` at the
 rev read back out of Cargo.lock (`conformance-ct::_ct-tools`), so the
 libraries and the CLI cannot drift apart. Registry dependencies replace
-the git pins when component-test publishes. The same applies to any
-future use of component-test's JS: npm git deps, not checkout paths
-(none is consumed today — `driver-ct/jco` implements the harness and
-test-context shim locally).
+the git pins when component-test publishes. The jco legs consume the
+JS runner core the same way: `@lann/component-test-js` in
+`driver-ct/jco/package.json`, a `github:lann/component-test#<rev>` git
+dep pinned to the same rev as the cargo entries (one rev everywhere —
+the root `Cargo.toml` comment is the bump checklist).
