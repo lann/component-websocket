@@ -30,7 +30,7 @@ where a verdict comes from.
 | [`server/`](server) | The suite-owned echo/reference server (`conformance-echod`): echo plus the fault modes the close-semantics rows need. Wire contract in [`server/PROTOCOL.md`](server/PROTOCOL.md). |
 | [`tests.toml`](tests.toml) | The test registry: ids, tags, one-line descriptions. The guest's corpus and the adapters' registries mirror it; `verify_corpus` gates the mirrors against the guest's `list-tests` before anything runs. |
 | [`targets.toml`](targets.toml) | Per-target capability facts: `unsupported` tags (with reasons) and `expected-fail` entries (with tracking issues). An undeclared divergence is a defect, not a fact to record. |
-| [`adapters/`](adapters) | Per-target adapters: provision a host, drive the guest, emit one JSON result document (`results/<target>.json`). `common/` is the shared Rust vocabulary; `jco/` holds the Node and headless-Chromium runners plus their shared `driver.js`. |
+| [`adapters/`](adapters) | Per-target adapters: provision a host, drive the guest, emit one JSON result document (`results/<target>.json`). `common/` is the shared Rust vocabulary; `jco/` holds the Node and headless-Chromium runners plus their shared `driver.js`; `composed/` runs the wac-composed in-guest provider under plain wasmtime with WASI p2+p3. |
 | [`runner/`](runner) | Classifies result documents against the registry and target facts, renders `matrix.md`, and exits nonzero on any `FAIL`, `UNEXPECTED-PASS`, or undeclared skip. |
 
 ### The result document

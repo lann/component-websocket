@@ -13,7 +13,7 @@ timeout_cmd := `command -v timeout >/dev/null 2>&1 && echo "timeout 600" || echo
 default: all
 
 # Clean stale results, build everything, run every target, classify.
-all: _clean-results build-all run-wasmtime run-jco-node run-jco-browser classify
+all: _clean-results build-all run-wasmtime run-jco-node run-jco-browser run-composed classify
 
 # ----- builders ---------------------------------------------------------------
 
@@ -27,13 +27,49 @@ transpile-guest: build-guest
 build-echod:
     cargo build -p conformance-echod
 
+# The in-guest provider (wasm32-wasip2 emits a component directly).
+build-provider:
+    cargo build --release -p websocket-guest-provider --target wasm32-wasip2
+    mkdir -p {{root}}/target/components
+    cp {{root}}/target/wasm32-wasip2/release/websocket_guest_provider.wasm \
+        {{root}}/target/components/websocket-guest-provider.wasm
+
+# The lann:tls component, from the checkout scripts/setup.sh pins by
+# rust/guest-provider/tls-component.rev.
+build-tls-component:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tls_dir={{root}}/target/deps/component-tls
+    if [ ! -d "$tls_dir" ]; then
+        echo "missing $tls_dir; run scripts/setup.sh first" >&2
+        exit 1
+    fi
+    cd "$tls_dir"
+    cargo build --release --target wasm32-wasip2 -p lann-tls-component
+    mkdir -p {{root}}/target/components
+    cp target/wasm32-wasip2/release/lann_tls_component.wasm \
+        {{root}}/target/components/lann-tls-component.wasm
+
+# The composed target's component: the shared guest with its connections
+# import plugged by the provider (which carries the TLS component).
+compose-guest: build-guest build-provider build-tls-component
+    wac plug --plug {{root}}/target/components/lann-tls-component.wasm \
+        {{root}}/target/components/websocket-guest-provider.wasm \
+        -o {{root}}/target/components/websocket-guest-provider-tls.wasm
+    wac plug --plug {{root}}/target/components/websocket-guest-provider-tls.wasm \
+        {{root}}/target/components/conformance-guest.wasm \
+        -o {{root}}/target/components/conformance-composed.wasm
+
 build-adapter-wasmtime:
     cargo build -p conformance-adapter-wasmtime
+
+build-adapter-composed:
+    cargo build -p conformance-adapter-composed
 
 build-runner:
     cargo build -p conformance-runner
 
-build-all: build-guest transpile-guest build-echod build-adapter-wasmtime build-runner
+build-all: build-guest transpile-guest build-echod build-adapter-wasmtime compose-guest build-adapter-composed build-runner
 
 # ----- runners ----------------------------------------------------------------
 
@@ -56,6 +92,13 @@ run-jco-node:
 
 run-jco-browser:
     {{timeout_cmd}} npm --prefix {{root}}/conformance/adapters/jco run run:browser
+
+run-composed:
+    {{timeout_cmd}} {{root}}/target/debug/conformance-adapter-composed \
+        --composed {{root}}/target/components/conformance-composed.wasm \
+        --guest {{root}}/target/components/conformance-guest.wasm \
+        --tests {{root}}/conformance/tests.toml \
+        --out {{root}}/conformance/results
 
 # Classify the collected results against tests.toml and targets.toml and
 # render the matrix. Completeness is required: every declared target must
@@ -83,6 +126,7 @@ classify-partial:
 wasmtime: build-guest build-adapter-wasmtime build-runner run-wasmtime
 jco-node: transpile-guest build-echod build-runner run-jco-node
 jco-browser: transpile-guest build-echod build-runner run-jco-browser
+composed: compose-guest build-adapter-composed build-runner run-composed
 
 # Run selected tests against one target, then classify leniently:
 # `just conformance::only wasmtime close-local echo-binary`.
@@ -101,8 +145,14 @@ only target +tests: build-all
             npm --prefix {{root}}/conformance/adapters/jco run run:node -- "${flags[@]}" ;;
         jco-browser)
             npm --prefix {{root}}/conformance/adapters/jco run run:browser -- "${flags[@]}" ;;
+        composed)
+            {{root}}/target/debug/conformance-adapter-composed \
+                --composed {{root}}/target/components/conformance-composed.wasm \
+                --guest {{root}}/target/components/conformance-guest.wasm \
+                --tests {{root}}/conformance/tests.toml \
+                --out {{root}}/conformance/results "${flags[@]}" ;;
         *)
-            echo "unknown target {{target}} (wasmtime | jco-node | jco-browser)" >&2
+            echo "unknown target {{target}} (wasmtime | jco-node | jco-browser | composed)" >&2
             exit 1 ;;
     esac
     just conformance::classify-partial

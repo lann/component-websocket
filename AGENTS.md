@@ -55,10 +55,12 @@ names it as a string; nothing catches these at build time except the
 places listed failing at run time. The sites:
 
 - the WIT worlds: root `wit/`, `rust/wasmtime/wit/world.wit`,
-  `conformance/wit/world.wit`, `examples/echo-demo/wit/world.wit`;
+  `rust/guest-provider/wit/world.wit`, `conformance/wit/world.wit`,
+  `examples/echo-demo/wit/world.wit`;
 - `bindgen!` configs (interface paths appear in per-function import
   overrides and `with:` maps): `rust/wasmtime/src/bindings.rs`,
   `conformance/adapters/wasmtime/src/main.rs`,
+  `conformance/adapters/composed/src/main.rs`,
   `examples/wasmtime-demo/src/lib.rs`;
 - jco instantiate maps (fail at run time, not build):
   `conformance/adapters/jco/run-node.mjs`, `run-browser.mjs`,
@@ -96,9 +98,10 @@ decision to record, not a refactor.
   do not flatten it into a byte stream.
 - **Client-only.** A listener surface is additive, if ever wanted; do not
   let server-side concerns shape the client resource.
-- **The in-guest provider is optional in the target matrix.** Its TLS
-  story is an open issue; do not let `wss:`-in-guest constraints leak into
-  the shared surface.
+- **The in-guest provider's TLS posture stays off the shared surface.**
+  `wss:` in-guest comes from composing `lann:tls` with explicit,
+  fail-closed trust anchors (see `rust/guest-provider/README.md`); trust
+  decisions never appear on the WIT.
 
 ## Check the rationale before implementing it
 

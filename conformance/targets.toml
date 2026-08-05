@@ -24,3 +24,5 @@
 [target.jco-node]
 
 [target.jco-browser]
+
+[target.composed]

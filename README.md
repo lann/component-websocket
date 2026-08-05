@@ -48,13 +48,9 @@ in-guest.
 | [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the jco conformance adapters. |
 | [`rust/wasmtime`](rust/wasmtime) | The **Wasmtime host crate** (`wasmtime-websocket`): `add_to_linker` + `WasiWebsocketView`, per-store `WasiWebsocketCtx` knobs for the bounds the WIT leaves implementation-defined. |
 | [`js/componentize`](js/componentize) | The **browser-API shim** for componentize-js guests: the WHATWG `WebSocket` interface implemented over the WIT imports — the inverse of `js/jco` — plus the **WPT parity gate**: vendored web-platform-tests run round-trip (shim → WIT → jco → platform WebSocket) and held to the platform baseline's pass set. |
-| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest corpus, a suite-owned echo server with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium), and the runner that classifies results into [the matrix](conformance/README.md). |
+| [`rust/guest-provider`](rust/guest-provider) | The **in-guest provider** (`websocket-guest-provider`): a WebSocket client stack over `wasi:sockets` TCP, exporting the package surface as a composable component; `wss:` via the composed [`lann:tls`](https://github.com/lann/component-tls) component. See its README for the TLS posture and configuration channel. |
+| [`conformance/`](conformance) | The **cross-implementation conformance suite**: a shared guest corpus, a suite-owned echo server (plain and TLS listeners) with fault-injection modes, per-target adapters (wasmtime, jco under Node, jco under headless Chromium, the composed in-guest provider), and the runner that classifies results into [the matrix](conformance/README.md). |
 | [`examples/`](examples) | The **echo-demo guest component** plus native (`just demo::wasmtime`) and Node (`just demo::node`) runners against the suite echo server. |
-
-The in-guest provider (a WebSocket stack over `wasi:sockets` TCP,
-exporting this package's surface) is planned but not yet built; it is
-optional in the conformance target matrix, and its TLS posture is issue
-[#1](../../issues/1).
 
 ## The interface
 

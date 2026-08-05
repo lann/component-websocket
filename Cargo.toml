@@ -1,10 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
+    "rust/guest-provider",
     "rust/wasmtime",
     "conformance/server",
     "conformance/guest",
     "conformance/adapters/common",
+    "conformance/adapters/composed",
     "conformance/adapters/wasmtime",
     "conformance/runner",
     "examples/echo-demo",
@@ -17,6 +19,7 @@ default-members = [
     "rust/wasmtime",
     "conformance/server",
     "conformance/adapters/common",
+    "conformance/adapters/composed",
     "conformance/adapters/wasmtime",
     "conformance/runner",
     "examples/wasmtime-demo",
@@ -41,4 +44,5 @@ wasmtime = { version = "47", features = [
     "async",
     "runtime",
 ] }
+wasmtime-wasi = { version = "47", features = ["p3"] }
 wit-bindgen = "0.59"

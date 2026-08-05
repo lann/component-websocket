@@ -26,6 +26,7 @@ fmt-check:
 clippy:
     cargo clippy -- -D warnings
     cargo clippy --target wasm32-unknown-unknown -p conformance-guest -p echo-demo -- -D warnings
+    cargo clippy --target wasm32-wasip2 -p websocket-guest-provider -- -D warnings
 
 # Validate every WIT tree: the shared package and each consumer's world
 # (which pulls the package in through its deps symlink).
@@ -33,6 +34,7 @@ validate-wit:
     wasm-tools component wit wit >/dev/null
     wasm-tools component wit rust/wasmtime/wit >/dev/null
     wasm-tools component wit conformance/wit >/dev/null
+    wasm-tools component wit rust/guest-provider/wit >/dev/null
     wasm-tools component wit examples/echo-demo/wit >/dev/null
     @echo "wit: ok"
 

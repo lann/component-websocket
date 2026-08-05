@@ -9,7 +9,7 @@
 # Prerequisites it does NOT install: rustup itself, Node 24+ and npm.
 #
 # Environment overrides:
-#   WASM_TOOLS_VERSION, JUST_VERSION  - tool version pins
+#   WASM_TOOLS_VERSION, JUST_VERSION, WAC_VERSION - tool version pins
 #   SKIP_NODE=1                       - skip all npm installs
 #
 # CI runs this same script rather than duplicating install steps.
@@ -17,6 +17,7 @@ set -euo pipefail
 
 WASM_TOOLS_VERSION="${WASM_TOOLS_VERSION:-1.247.0}"
 JUST_VERSION="${JUST_VERSION:-1.54.0}"
+WAC_VERSION="${WAC_VERSION:-0.10.1}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -49,6 +50,24 @@ if ! have wasm-tools; then
 fi
 if ! have just; then
     cargo binstall -y --locked --force "just@${JUST_VERSION}"
+fi
+if ! have wac; then
+    cargo binstall -y --locked --force "wac-cli@${WAC_VERSION}"
+fi
+
+# component-tls, pinned by rust/guest-provider/tls-component.rev: the
+# lann:tls component composed into the in-guest provider for wss:. The
+# checkout lives under target/ (build territory); the composed-target
+# recipes build it from here.
+TLS_REV="$(cat "$REPO_ROOT/rust/guest-provider/tls-component.rev")"
+TLS_DIR="$REPO_ROOT/target/deps/component-tls"
+if [ ! -d "$TLS_DIR/.git" ]; then
+    mkdir -p "$(dirname "$TLS_DIR")"
+    git clone https://github.com/lann/component-tls "$TLS_DIR"
+fi
+if [ "$(git -C "$TLS_DIR" rev-parse HEAD)" != "$TLS_REV" ]; then
+    git -C "$TLS_DIR" fetch origin "$TLS_REV"
+    git -C "$TLS_DIR" checkout --detach "$TLS_REV"
 fi
 
 if [ "${SKIP_NODE:-}" != "1" ]; then
