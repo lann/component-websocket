@@ -40,13 +40,24 @@ Layout (each directory's justfile module in parentheses):
   `tests.toml` + `targets.toml`. The corpus is mirrored in four places
   (guest `CORPUS`, `adapters/common` `TESTS`, `adapters/jco/driver.js`
   `TESTS`, `tests.toml`); `verify_corpus` gates the mirrors.
+- `conformance/guest-ct` + `conformance/driver-ct`
+  (`just conformance-ct`) — the same 52 cases on the
+  `lann:component-test` harness (migration in progress: the wasmtime leg
+  runs here; jco legs and the cutover are tracked in issues). The
+  committed `guest-ct/tests.lock` replaces the four-way corpus mirror
+  for this harness, and `driver-ct/targets.toml` + the #48
+  expected-fail mechanism replace `targets.toml` declarations. These
+  crates are workspace members with path-deps against a sibling
+  `../component-test` checkout pinned by `.component-test-rev`
+  (`scripts/setup.sh` provisions it) — every workspace-wide cargo
+  command needs that sibling.
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →
 `just validate-wit` then `just conformance` (a surface change is
 co-dependent across every implementation); either implementation →
 `just conformance`; Rust → `just check`; conformance machinery →
-`just conformance`; justfiles/CI → `just ci`.
+`just conformance` and `just conformance-ct`; justfiles/CI → `just ci`.
 
 ## Renaming WIT items
 

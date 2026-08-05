@@ -28,6 +28,20 @@ if ! have rustup; then
     echo "setup: rustup is required but not on PATH (https://rustup.rs); see the README prerequisites" >&2
     exit 1
 fi
+
+# The component-test sibling checkout: the conformance-ct crates are
+# workspace members with path-deps against ../component-test, pinned by
+# .component-test-rev. An existing checkout is never touched (only
+# warned about when the pin is missing from it).
+CT_REV="$(cat "$REPO_ROOT/.component-test-rev")"
+CT_DIR="$REPO_ROOT/../component-test"
+if [ ! -d "$CT_DIR" ]; then
+    echo "setup: cloning component-test sibling at $CT_REV"
+    git clone https://github.com/lann/component-test "$CT_DIR"
+    git -C "$CT_DIR" checkout --detach "$CT_REV"
+elif ! git -C "$CT_DIR" cat-file -e "$CT_REV" 2>/dev/null; then
+    echo "setup: warning: ../component-test does not contain pinned rev $CT_REV" >&2
+fi
 if [ "${SKIP_NODE:-}" != "1" ] && ! have npm; then
     echo "setup: npm is required but not on PATH (Node 24+; see the README prerequisites), or set SKIP_NODE=1" >&2
     exit 1

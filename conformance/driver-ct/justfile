@@ -1,0 +1,72 @@
+# The component-test conformance harness (migration in progress: the
+# wasmtime leg runs here; the jco legs and the classifier still live in
+# ../justfile until the cutover).
+#
+# Builders produce artifacts, runners execute prebuilt artifacts, the
+# aggregate joins result streams against the committed lockfile and
+# targets.toml and diffs the committed matrix.
+
+import '../../justfile.shared.just'
+
+ct := root / "../component-test"
+ct_cli := ct / "target/debug/component-test"
+suite_wasm := root / "target/wasm32-wasip2/release/conformance_guest_ct.wasm"
+results := root / "conformance/driver-ct/results"
+
+default: all
+
+# Build + lockfile gate + run + aggregate + matrix gate.
+all: build lock-check run-wasmtime aggregate matrix-check
+
+# ----- builders ---------------------------------------------------------------
+
+build-suite:
+    cargo build --manifest-path {{root}}/Cargo.toml \
+        --target wasm32-wasip2 --release -p conformance-guest-ct
+
+build-driver:
+    cargo build --manifest-path {{root}}/Cargo.toml -p conformance-ct-driver
+
+# The component-test CLI from the sibling checkout (see
+# .component-test-rev; scripts/setup.sh provisions the checkout).
+_ct-tools:
+    cargo build --manifest-path {{ct}}/Cargo.toml -p component-test-cli
+
+build: build-suite build-driver _ct-tools
+
+# ----- lockfile ---------------------------------------------------------------
+
+# The committed inventory is the corpus mirror (replacing the incumbent
+# four-way mirror): drift fails here and in the runner's cross-check.
+lock-check: build-suite _ct-tools
+    {{ct_cli}} lock {{suite_wasm}} \
+        --check {{root}}/conformance/guest-ct/tests.lock
+
+# Regenerate after suite changes; commit the diff (the review surface).
+lock-update: build-suite _ct-tools
+    {{ct_cli}} lock {{suite_wasm}} \
+        -o {{root}}/conformance/guest-ct/tests.lock
+
+# ----- runners ----------------------------------------------------------------
+
+run-wasmtime: build-suite build-driver
+    mkdir -p {{results}}
+    {{root}}/target/debug/ct-driver {{suite_wasm}} \
+        --jsonl --jobs 4 --target wasmtime > {{results}}/wasmtime.jsonl
+
+# ----- aggregation -------------------------------------------------------------
+
+aggregate: _ct-tools
+    {{ct_cli}} aggregate \
+        --lock {{root}}/conformance/guest-ct/tests.lock \
+        --manifest {{root}}/conformance/driver-ct/targets.toml \
+        --results wasmtime={{results}}/wasmtime.jsonl \
+        -o {{results}}/matrix.md
+
+# The committed matrix is the cross-target review surface; regenerate
+# with matrix-update and commit the diff.
+matrix-check:
+    diff -u {{root}}/conformance/driver-ct/matrix.md {{results}}/matrix.md
+
+matrix-update:
+    cp {{results}}/matrix.md {{root}}/conformance/driver-ct/matrix.md

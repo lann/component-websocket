@@ -1,0 +1,16 @@
+# Target capability manifest for the component-test conformance harness
+# (the #48-mechanism successor to ../targets.toml).
+#
+# No [features]: every current target serves the whole lann:websocket
+# surface. When a capability gap appears, declare it here (`[features.x]
+# kind = "gated"` + `missing-features`), tag the affected cases, and add
+# a `!x` decline probe — the component-test replacement for the
+# incumbent's tag-scoped `unsupported` declarations.
+#
+# Known failures go under `[[targets.<t>.expected-fail]]` with a
+# mandatory reason and tracking link (never a deleted test); a passing
+# expected-fail fails the aggregate until the declaration is removed.
+version = "0.1"
+
+[targets.wasmtime]
+missing-features = []
