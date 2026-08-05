@@ -1,10 +1,10 @@
-# `lann:websocket`
+# `polymorph:websocket`
 
 A WIT interface for WebSocket client connections, plus multiple
 implementations that run the *same* guest component against real WebSocket
 stacks — a sibling of
-[`lann:webcrypto`](https://github.com/lann/component-webcrypto) and
-[`lann:webrtc-datachannels`](https://github.com/lann/component-webrtc-datachannels),
+[`polymorph:webcrypto`](https://github.com/polymorph-components/polymorph-webcrypto) and
+[`polymorph:webrtc-datachannels`](https://github.com/polymorph-components/polymorph-webrtc-datachannels),
 deliberately mirroring their architecture.
 
 One guest component binary runs unchanged against:
@@ -32,7 +32,7 @@ deployment target — offers *only* WebSocket (and WebRTC) for long-lived
 duplex connections.
 
 The immediate consumer is
-[`component-iroh`](https://github.com/lann/component-iroh): an iroh
+[`component-iroh`](https://github.com/polymorph-components/polymorph-iroh): an iroh
 endpoint keeps a persistent secure WebSocket open to its home relay, and
 publishes signed discovery records over HTTPS. The relay leg is exactly
 the capability gap this package fills. But the interface is
@@ -44,12 +44,12 @@ in-guest.
 
 | Path | Deliverable |
 | --- | --- |
-| [`wit/`](wit) | The `lann:websocket` package: a `types` interface for structural types and a `connections` interface owning the `websocket` resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. Package-wide contracts live in [`wit/README.md`](wit/README.md). |
+| [`wit/`](wit) | The `polymorph:websocket` package: a `types` interface for structural types and a `connections` interface owning the `websocket` resource. One copy at the root; consumers pull it in via `wit/deps` symlinks. Package-wide contracts live in [`wit/README.md`](wit/README.md). |
 | [`js/jco`](js/jco) | The **browser-first host library** (`websocket.js`): the standard `WebSocket` API only, no `node:` modules, no runtime dependencies. Shared verbatim by the demo runners and the conformance jco legs. |
 | [`rust/wasmtime`](rust/wasmtime) | The **Wasmtime host crate** (`wasmtime-websocket`): `add_to_linker` + `WasiWebsocketView`, per-store `WasiWebsocketCtx` knobs for the bounds the WIT leaves implementation-defined. |
 | [`js/componentize`](js/componentize) | The **browser-API shim** for componentize-js guests: the WHATWG `WebSocket` interface implemented over the WIT imports — the inverse of `js/jco` — plus the **WPT parity gate**: vendored web-platform-tests run round-trip (shim → WIT → jco → platform WebSocket) and held to the platform baseline's pass set. |
-| [`rust/guest-provider`](rust/guest-provider) | The **in-guest provider** (`websocket-guest-provider`): a WebSocket client stack over `wasi:sockets` TCP, exporting the package surface as a composable component; `wss:` via the composed [`lann:tls`](https://github.com/lann/component-tls) component. See its README for the TLS posture and configuration channel. |
-| [`conformance/`](conformance) | The **cross-implementation conformance suite** on the [`lann:component-test`](https://github.com/lann/component-test) harness: a shared guest suite (`guest-ct`, its committed `tests.lock` the corpus inventory), a suite-owned echo server with fault-injection modes, and the driver (`driver-ct`) that runs every target (wasmtime, jco under Node, jco under headless Chromium) into [the matrix](conformance/README.md). |
+| [`rust/guest-provider`](rust/guest-provider) | The **in-guest provider** (`websocket-guest-provider`): a WebSocket client stack over `wasi:sockets` TCP, exporting the package surface as a composable component; `wss:` via the composed [`polymorph:tls`](https://github.com/polymorph-components/polymorph-tls) component. See its README for the TLS posture and configuration channel. |
+| [`conformance/`](conformance) | The **cross-implementation conformance suite** on the [`polymorph:component-test`](https://github.com/polymorph-components/polymorph-test) harness: a shared guest suite (`guest-ct`, its committed `tests.lock` the corpus inventory), a suite-owned echo server with fault-injection modes, and the driver (`driver-ct`) that runs every target (wasmtime, jco under Node, jco under headless Chromium) into [the matrix](conformance/README.md). |
 | [`examples/`](examples) | The **echo-demo guest component** plus native (`just demo::wasmtime`) and Node (`just demo::node`) runners against the suite echo server. |
 
 ## The interface

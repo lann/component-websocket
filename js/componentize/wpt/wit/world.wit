@@ -1,7 +1,7 @@
 // Harness-only WIT for the WPT parity runner: the world it is
-// componentized against. The shared `lann:websocket` package lives once at
+// componentized against. The shared `polymorph:websocket` package lives once at
 // the repository root `wit/` and is pulled in through the
-// `deps/lann-websocket` symlink.
+// `deps/polymorph-websocket` symlink.
 package wpt:parity@0.1.0;
 
 /// The runner's streaming channel: the embedder receives each settled
@@ -26,8 +26,8 @@ interface runner {
 
 world wpt-parity-runner {
     import reporter;
-    import lann:websocket/types@0.1.0;
-    import lann:websocket/connections@0.1.0;
+    import polymorph:websocket/types@0.1.0;
+    import polymorph:websocket/connections@0.1.0;
 
     export runner;
 }

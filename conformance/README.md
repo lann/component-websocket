@@ -1,7 +1,7 @@
 # Conformance suite
 
-Cross-implementation conformance tests for `lann:websocket`, on the shared
-[`lann:component-test`](https://github.com/lann/component-test)
+Cross-implementation conformance tests for `polymorph:websocket`, on the shared
+[`polymorph:component-test`](https://github.com/polymorph-components/polymorph-test)
 infrastructure: one suite component runs the same corpus against every
 implementation, and the aggregate joins the per-target result streams into
 the committed matrix. The suite is the behavioral gate for the package — a
@@ -25,10 +25,10 @@ section.
 
 | Piece | Role |
 | --- | --- |
-| [`guest-ct/`](guest-ct) | The suite component: 52 `#[case]`s importing `lann:websocket/connections`, owning **every assertion**. One wasm binary, run unchanged against every target. The committed `tests.lock` is its inventory (drift fails `lock-check` and the runner's own cross-check). |
+| [`guest-ct/`](guest-ct) | The suite component: 52 `#[case]`s importing `polymorph:websocket/connections`, owning **every assertion**. One wasm binary, run unchanged against every target. The committed `tests.lock` is its inventory (drift fails `lock-check` and the runner's own cross-check). |
 | [`server/`](server) | The suite-owned echo/reference server (`conformance-echod`): echo plus the fault modes the close-semantics rows need. Wire contract in [`server/PROTOCOL.md`](server/PROTOCOL.md); `server/echod.mjs` holds the Node-side spawn helpers every JS leg shares. |
-| [`driver-ct/`](driver-ct) | The legs and the aggregate. `ct-driver` (Rust) embeds the wasmtime host (and, with `--composed`, runs the wac-composed in-guest provider under WASI p2+p3 instead); `jco/` runs the transpiled suite in Node and headless Chromium through one shared `harness.mjs` — thin glue (SUT import wiring, config) over the upstream runner core (`@lann/component-test-js`, the git dep), which owns the case loop, verdict mapping, and tag-inventory drift check. `targets.toml` declares targets, features, and expected-fail entries; `component-test aggregate` validates and renders the matrix. The composed leg executes a different artifact by construction (the suite with the provider plugged in), so it binds its results envelope to the uncomposed suite's bytes (`--suite-artifact`, the runner's `bind_suite_artifact` attestation) and the aggregate's cross-target artifact agreement covers all four legs. |
-| [`wit/`](wit) | The suite's world (`sut-imports`): only the surface under test — the export surface comes from the component-test SDK. The `lann:websocket` package arrives through the `deps/lann-websocket` symlink, never a copy. |
+| [`driver-ct/`](driver-ct) | The legs and the aggregate. `ct-driver` (Rust) embeds the wasmtime host (and, with `--composed`, runs the wac-composed in-guest provider under WASI p2+p3 instead); `jco/` runs the transpiled suite in Node and headless Chromium through one shared `harness.mjs` — thin glue (SUT import wiring, config) over the upstream runner core (`@polymorph/component-test-js`, the git dep), which owns the case loop, verdict mapping, and tag-inventory drift check. `targets.toml` declares targets, features, and expected-fail entries; `component-test aggregate` validates and renders the matrix. The composed leg executes a different artifact by construction (the suite with the provider plugged in), so it binds its results envelope to the uncomposed suite's bytes (`--suite-artifact`, the runner's `bind_suite_artifact` attestation) and the aggregate's cross-target artifact agreement covers all four legs. |
+| [`wit/`](wit) | The suite's world (`sut-imports`): only the surface under test — the export surface comes from the component-test SDK. The `polymorph:websocket` package arrives through the `deps/polymorph-websocket` symlink, never a copy. |
 
 ### The result stream
 
@@ -91,7 +91,7 @@ handshake-blocking workaround.
   `lock-update` and review the diff. Drift fails `lock-check` and the
   runner's cross-check.
 - Never copy the root WIT: the suite consumes it through the
-  `wit/deps/lann-websocket` symlink.
+  `wit/deps/polymorph-websocket` symlink.
 - Conformance work must not change production host behavior except where a
   test deliberately drives a fix.
 
@@ -105,7 +105,7 @@ and aggregate recipes is cargo-installed into `target/ct-tools` at the
 rev read back out of Cargo.lock (`conformance-ct::_ct-tools`), so the
 libraries and the CLI cannot drift apart. Registry dependencies replace
 the git pins when component-test publishes. The jco legs consume the
-JS runner core the same way: `@lann/component-test-js` in
-`driver-ct/jco/package.json`, a `github:lann/component-test#<rev>` git
+JS runner core the same way: `@polymorph/component-test-js` in
+`driver-ct/jco/package.json`, a `github:polymorph-components/polymorph-test#<rev>` git
 dep pinned to the same rev as the cargo entries (one rev everywhere —
 the root `Cargo.toml` comment is the bump checklist).

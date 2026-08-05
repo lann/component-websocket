@@ -1,5 +1,5 @@
 //! The example guest component: host-agnostic Rust that drives the
-//! `lann:websocket/connections` interface. The same binary runs unchanged
+//! `polymorph:websocket/connections` interface. The same binary runs unchanged
 //! under the Wasmtime host (`examples/wasmtime-demo`) and the jco host
 //! (`examples/jco-demo`); the conformance suite (`conformance/`) is the
 //! behavioral gate — this demo just shows the surface in use.
@@ -13,8 +13,8 @@ mod bindings {
 }
 
 use bindings::exports::demo::websocket_echo::demo::Guest;
-use bindings::lann::websocket::connections::Websocket;
-use bindings::lann::websocket::types::{Error, Message};
+use bindings::polymorph::websocket::connections::Websocket;
+use bindings::polymorph::websocket::types::{Error, Message};
 
 struct Component;
 

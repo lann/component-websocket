@@ -1,7 +1,7 @@
 # Target capability manifest for the component-test conformance harness
 # (the #48-mechanism successor to ../targets.toml).
 #
-# No [features]: every current target serves the whole lann:websocket
+# No [features]: every current target serves the whole polymorph:websocket
 # surface. When a capability gap appears, declare it here (`[features.x]
 # kind = "gated"` + `missing-features`), tag the affected cases, and add
 # a `!x` decline probe — the component-test replacement for the

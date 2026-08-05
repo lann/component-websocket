@@ -1,5 +1,5 @@
 //! `connect`: URL and subprotocol validation, name resolution, TCP (and
-//! for `wss:` the composed `lann:tls` client), the opening handshake, and
+//! for `wss:` the composed `polymorph:tls` client), the opening handshake, and
 //! pump spawn — all bounded by the configured connect timeout.
 //!
 //! The handshake itself is tungstenite's client handshake (key
@@ -18,8 +18,8 @@ use tungstenite::handshake::client::ClientHandshake;
 use tungstenite::handshake::{HandshakeError, MidHandshake};
 use tungstenite::http;
 
-use crate::bindings::lann::tls::client::Connector;
-use crate::bindings::lann::websocket::types::Error;
+use crate::bindings::polymorph::tls::client::Connector;
+use crate::bindings::polymorph::websocket::types::Error;
 use crate::bindings::wasi::clocks::monotonic_clock as clock;
 use crate::bindings::wasi::sockets::ip_name_lookup::resolve_addresses;
 use crate::bindings::wasi::sockets::types::{

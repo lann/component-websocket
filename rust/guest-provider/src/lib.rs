@@ -1,9 +1,9 @@
 //! The in-guest provider: a WebSocket client stack over `wasi:sockets`
-//! TCP, exporting `lann:websocket/connections` — the same interface the
+//! TCP, exporting `polymorph:websocket/connections` — the same interface the
 //! hosted implementations serve, so the shared conformance guest composes
 //! against it unchanged.
 //!
-//! `wss:` is served by the composed `lann:tls` component (see
+//! `wss:` is served by the composed `polymorph:tls` component (see
 //! `tls-component.rev`); trust anchors are explicit configuration and
 //! `wss:` fails closed without them. See `README.md` (beside this crate)
 //! for the TLS posture and the configuration channel.
@@ -30,10 +30,10 @@ mod pump;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use bindings::exports::lann::websocket::connections::{
+use bindings::exports::polymorph::websocket::connections::{
     Guest, GuestWebsocket, Websocket as WebsocketResource,
 };
-use bindings::lann::websocket::types::{
+use bindings::polymorph::websocket::types::{
     CloseInfo, Error, Message, MessageKind, SendViaStreamError, StreamMessage, WebsocketState,
 };
 use futures::{FutureExt as _, StreamExt as _};

@@ -3,7 +3,7 @@
 // environment the browser-first host actually targets — emitting
 // component-test results JSONL. Browser counterpart of run-node.mjs;
 // the import wiring and suite loop live in harness.mjs, shared, and
-// the page resolves its bare @lann/component-test-js specifiers
+// the page resolves its bare @polymorph/component-test-js specifiers
 // through an import map onto the served facade files.
 //
 // jco's async ABI needs JSPI; Chrome ships it enabled from 137 onward.
@@ -33,13 +33,13 @@ const SHIM_BROWSER_DIR = join(
 // The upstream runner core's files, wherever the install put them (the
 // package exports resolve to js/viewer/ inside the installed tree).
 const CT_JS_DIR = dirname(
-  fileURLToPath(import.meta.resolve("@lann/component-test-js/harness")),
+  fileURLToPath(import.meta.resolve("@polymorph/component-test-js/harness")),
 );
 
 const IMPORT_MAP = JSON.stringify({
   imports: {
-    "@lann/component-test-js/harness": "/ct/harness.mjs",
-    "@lann/component-test-js/context": "/ct/context.js",
+    "@polymorph/component-test-js/harness": "/ct/harness.mjs",
+    "@polymorph/component-test-js/context": "/ct/context.js",
   },
 });
 

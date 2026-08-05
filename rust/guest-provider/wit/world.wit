@@ -1,11 +1,11 @@
-package lann:websocket-provider@0.1.0;
+package polymorph:websocket-provider@0.1.0;
 
 /// The in-guest provider: a WebSocket client stack over `wasi:sockets`
-/// TCP, exporting the same `lann:websocket/connections` interface the
+/// TCP, exporting the same `polymorph:websocket/connections` interface the
 /// hosted implementations serve, so the one conformance guest composes
 /// against it unchanged (`wac plug`).
 ///
-/// `wss:` support comes from composing the `lann:tls` component (see
+/// `wss:` support comes from composing the `polymorph:tls` component (see
 /// `tls-component.rev` beside this tree); trust anchors are explicit
 /// per-deployment configuration — no system root store exists in-guest,
 /// and with no roots configured `wss:` connects fail closed.
@@ -13,6 +13,6 @@ world provider {
     import wasi:sockets/types@0.3.0;
     import wasi:sockets/ip-name-lookup@0.3.0;
     import wasi:clocks/monotonic-clock@0.3.0;
-    import lann:tls/client@0.1.0;
-    export lann:websocket/connections@0.1.0;
+    import polymorph:tls/client@0.1.0;
+    export polymorph:websocket/connections@0.1.0;
 }

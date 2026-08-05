@@ -30,7 +30,7 @@ try {
     }
   }
   const instance = await instantiate((name) => modules.get(name), {
-    "lann:websocket/connections": connections,
+    "polymorph:websocket/connections": connections,
   });
   // jco lifts the export's `result<u32, string>` into return-or-throw.
   try {

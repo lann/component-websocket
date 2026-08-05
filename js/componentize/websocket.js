@@ -1,13 +1,13 @@
 // @ts-check
 // A WHATWG `WebSocket` shim for JS guests componentized with
 // componentize-js (https://github.com/dicej/componentize-js, the wit-dylib
-// reboot of ComponentizeJS), backed by the `lann:websocket` imports.
+// reboot of ComponentizeJS), backed by the `polymorph:websocket` imports.
 //
 // This is the inverse of `js/jco/websocket.js`: that module implements the
 // WIT *imports* over the standard browser API, while this one implements
 // the standard browser API *over* the WIT imports, so JS application code
 // written against `WebSocket` can be componentized and run against any
-// host that serves `lann:websocket/connections` — including, round-trip,
+// host that serves `polymorph:websocket/connections` — including, round-trip,
 // the jco host itself (the WPT parity gate in `wpt/` measures exactly what
 // that carrier stack loses).
 //
@@ -20,7 +20,7 @@
 // EventTarget semantics, and `onopen`/`onmessage`/`onerror`/`onclose`
 // handler properties.
 //
-// The component's world must import `lann:websocket/connections@0.1.0`
+// The component's world must import `polymorph:websocket/connections@0.1.0`
 // (its `types` dependency is pulled in by WIT elaboration). Module
 // specifiers here name the import directly, so this file needs no
 // bundler: componentize-js resolves them against the world at
@@ -52,7 +52,7 @@
 //     the WIT deliberately has no URL accessor, and normalizing here
 //     would only imitate one platform's parser) (WIT-forced).
 
-import * as connections from "lann:websocket/connections@0.1.0";
+import * as connections from "polymorph:websocket/connections@0.1.0";
 
 // ----- platform pieces the componentize-js runtime may lack -----------------
 
@@ -323,7 +323,7 @@ export class WebSocket extends EventTargetImpl {
   #bufferedAmount = 0;
   #protocol = "";
   #binaryType = "blob";
-  /** @type {import("lann:websocket/connections@0.1.0").Websocket | null} */
+  /** @type {import("polymorph:websocket/connections@0.1.0").Websocket | null} */
   #ws = null;
   /** FIFO chain serializing WIT sends so message order is preserved. */
   #sendQueue = Promise.resolve();
@@ -538,7 +538,7 @@ export class WebSocket extends EventTargetImpl {
     }
   }
 
-  /** @param {import("lann:websocket/connections@0.1.0").Websocket} ws */
+  /** @param {import("polymorph:websocket/connections@0.1.0").Websocket} ws */
   #established(ws) {
     this.#ws = ws;
     if (this.#pendingClose !== null) {

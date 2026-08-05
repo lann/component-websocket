@@ -1,4 +1,4 @@
-//! Host trait implementations for the `lann:websocket` imports.
+//! Host trait implementations for the `polymorph:websocket` imports.
 //!
 //! Following the split the generated bindings produce (and mirroring
 //! `wasmtime_wasi_http::p3`), the store-free traits are implemented for the

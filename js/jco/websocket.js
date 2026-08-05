@@ -1,4 +1,4 @@
-// Host implementation of the `lann:websocket/connections` imports.
+// Host implementation of the `polymorph:websocket/connections` imports.
 //
 // This is the "browser-first" host: it is written against the standard W3C
 // `WebSocket` API only — no `node:` modules, no runtime dependencies — so
@@ -741,7 +741,7 @@ async function collectByteStream(stream, limit) {
 }
 
 // The interface-shaped aggregate export: jco's `--map
-// 'lann:websocket/*@0.1.0=websocket.js#*'` resolves each imported
+// 'polymorph:websocket/*@0.1.0=websocket.js#*'` resolves each imported
 // interface to a named export of this module, so transpiled components
 // (the componentize round-trip legs) import `{ connections }` rather than
 // the module namespace the instantiation-mode adapters pass explicitly.

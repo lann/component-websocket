@@ -1,9 +1,9 @@
-//! Wasmtime host implementation of the `lann:websocket` interfaces, backed
+//! Wasmtime host implementation of the `polymorph:websocket` interfaces, backed
 //! by [`tokio-tungstenite`](https://github.com/snapview/tokio-tungstenite).
 //!
 //! This crate factors the host-agnostic part of a Wasmtime WebSocket host
 //! out of the embedding binaries so any host can satisfy the
-//! `lann:websocket` imports with one call to [`add_to_linker`]. It is a
+//! `polymorph:websocket` imports with one call to [`add_to_linker`]. It is a
 //! wasip3 (component-model async) implementation modeled after
 //! [`wasmtime_wasi_http::p3`]: a host embeds a [`WasiWebsocketCtx`] in its
 //! store state, implements [`WasiWebsocketView`] to expose it alongside the
@@ -18,7 +18,7 @@
 //!
 //! ```text
 //! with: {
-//!     "lann:websocket/connections.websocket":
+//!     "polymorph:websocket/connections.websocket":
 //!         wasmtime_websocket::Websocket,
 //! },
 //! ```
@@ -148,13 +148,13 @@ pub struct WasiWebsocketCtxView<'a> {
 /// A trait that provides access to the [`WasiWebsocketCtx`] host state.
 ///
 /// Implement this for your store's data type so [`add_to_linker`] can wire
-/// the `lann:websocket` imports onto your linker.
+/// the `polymorph:websocket` imports onto your linker.
 pub trait WasiWebsocketView: Send {
     /// Return a [`WasiWebsocketCtxView`] from a mutable reference to `self`.
     fn websocket(&mut self) -> WasiWebsocketCtxView<'_>;
 }
 
-/// The type for which this crate implements the `lann:websocket`
+/// The type for which this crate implements the `polymorph:websocket`
 /// interfaces. Used as the [`HasData`] marker for the generated bindings.
 pub struct WasiWebsocket;
 
@@ -162,7 +162,7 @@ impl HasData for WasiWebsocket {
     type Data<'a> = WasiWebsocketCtxView<'a>;
 }
 
-/// Add the `lann:websocket` interfaces implemented by this crate (`types`
+/// Add the `polymorph:websocket` interfaces implemented by this crate (`types`
 /// and `connections`) to the provided [`Linker`].
 ///
 /// The store's data type `T` must implement [`WasiWebsocketView`]. The

@@ -4,5 +4,5 @@ package wasmtime:websocket-host;
 // per-interface `add_to_linker` helpers for the interfaces this crate
 // implements.
 world imports {
-    import lann:websocket/connections@0.1.0;
+    import polymorph:websocket/connections@0.1.0;
 }

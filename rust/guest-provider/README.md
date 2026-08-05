@@ -2,12 +2,12 @@
 
 The in-guest provider: a WebSocket client stack over `wasi:sockets` TCP,
 built as a wasm component (`wasm32-wasip2`) that **exports**
-`lann:websocket/connections`. Compositions plug it under any guest that
+`polymorph:websocket/connections`. Compositions plug it under any guest that
 imports the interface:
 
 ```sh
-# wss: capability comes from the lann:tls component (see below).
-wac plug --plug lann-tls-component.wasm websocket-guest-provider.wasm \
+# wss: capability comes from the polymorph:tls component (see below).
+wac plug --plug polymorph-tls-component.wasm websocket-guest-provider.wasm \
     -o provider-tls.wasm
 wac plug --plug provider-tls.wasm your-guest.wasm -o composed.wasm
 
@@ -23,7 +23,7 @@ hosted implementations.
 ## TLS posture (`wss:`)
 
 `wss:` is served by composing
-[`lann:tls`](https://github.com/lann/component-tls) — a pure-wasm TLS 1.3
+[`polymorph:tls`](https://github.com/polymorph-components/polymorph-tls) — a pure-wasm TLS 1.3
 client — pinned by `tls-component.rev` beside this crate. The posture,
 resolving the trust-anchor and secret-placement questions the in-guest
 setting raises:

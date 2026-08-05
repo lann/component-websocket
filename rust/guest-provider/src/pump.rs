@@ -21,7 +21,7 @@ use tungstenite::protocol::frame::coding::CloseCode;
 use tungstenite::protocol::CloseFrame;
 use tungstenite::WebSocket;
 
-use crate::bindings::lann::websocket::types::{CloseInfo, Error, Message};
+use crate::bindings::polymorph::websocket::types::{CloseInfo, Error, Message};
 use crate::bindings::wasi::clocks::monotonic_clock as clock;
 use crate::io::{IoHandle, VirtualIo};
 use crate::Flag;
@@ -188,7 +188,7 @@ pub(crate) struct Transport {
 /// The TLS-side handles for a `wss:` connection (ownership keepalive).
 #[allow(dead_code)]
 pub(crate) struct TlsKeepalive {
-    pub(crate) connector: crate::bindings::lann::tls::client::Connector,
+    pub(crate) connector: crate::bindings::polymorph::tls::client::Connector,
 }
 
 /// Everything the pump needs at spawn time.

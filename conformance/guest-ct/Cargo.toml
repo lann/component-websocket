@@ -3,7 +3,7 @@ name = "conformance-guest-ct"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "The conformance suite on the lann:component-test SDK: the incumbent guest's 52 cases as a #[suite] component importing lann:websocket/connections, run by conformance/driver-ct."
+description = "The conformance suite on the polymorph:component-test SDK: the incumbent guest's 52 cases as a #[suite] component importing polymorph:websocket/connections, run by conformance/driver-ct."
 
 [lib]
 crate-type = ["cdylib"]

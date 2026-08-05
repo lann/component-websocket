@@ -1,5 +1,5 @@
 //! The native host runner for the echo-demo component: provisions the
-//! `lann:websocket` imports with [`wasmtime_websocket`], stands up the
+//! `polymorph:websocket` imports with [`wasmtime_websocket`], stands up the
 //! suite echo server in-process, and drives the component's exported `run`.
 
 use anyhow::{Context as _, Result};
@@ -18,7 +18,7 @@ mod bindings {
             default: async,
         },
         with: {
-            "lann:websocket/connections.websocket": wasmtime_websocket::Websocket,
+            "polymorph:websocket/connections.websocket": wasmtime_websocket::Websocket,
         },
     });
 }

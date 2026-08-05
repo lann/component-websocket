@@ -1,4 +1,4 @@
-//! The conformance suite as a `lann:component-test` component.
+//! The conformance suite as a `polymorph:component-test` component.
 //!
 //! One `#[case]` per incumbent test row; every body delegates to
 //! [`body`], the verbatim port of the incumbent guest's dispatch,

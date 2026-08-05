@@ -1,7 +1,7 @@
 {
-  "name": "@lann/websocket-jco",
+  "name": "@polymorph/websocket-jco",
   "version": "0.1.0",
-  "description": "Browser-first host implementation of lann:websocket over the standard WebSocket API",
+  "description": "Browser-first host implementation of polymorph:websocket over the standard WebSocket API",
   "type": "module",
   "main": "websocket.js",
   "exports": {

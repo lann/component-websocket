@@ -1,12 +1,12 @@
 // The conformance suite's WIT package: the world the suite component is
-// built against. The `lann:websocket` package arrives through the
-// `deps/lann-websocket` symlink to the repository root `wit/` — never a
+// built against. The `polymorph:websocket` package arrives through the
+// `deps/polymorph-websocket` symlink to the repository root `wit/` — never a
 // copy.
 package conformance:suite@0.1.0;
 
 /// The suite's world: only the surface under test is declared here —
-/// the export surface (the `lann:component-test` tests contract) comes
+/// the export surface (the `polymorph:component-test` tests contract) comes
 /// from the component-test SDK.
 world sut-imports {
-    import lann:websocket/connections@0.1.0;
+    import polymorph:websocket/connections@0.1.0;
 }

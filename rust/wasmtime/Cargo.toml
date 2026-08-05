@@ -2,7 +2,7 @@
 name = "wasmtime-websocket"
 version = "0.1.0"
 edition = "2021"
-description = "Wasmtime host implementation of the lann:websocket interfaces over tokio-tungstenite"
+description = "Wasmtime host implementation of the polymorph:websocket interfaces over tokio-tungstenite"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

@@ -1,7 +1,7 @@
 // Leg-shared glue for the jco conformance legs: the SUT import wiring
 // (bindImports) and the thin suite loop over the upstream runner core
-// (@lann/component-test-js — one harness for every runner, per
-// lann/component-test#5; the case loop, verdict mapping, and tag
+// (@polymorph/component-test-js — one harness for every runner, per
+// polymorph-components/polymorph-test#5; the case loop, verdict mapping, and tag
 // inventory live there, not here). Runs in Node and inside the browser
 // page unchanged (the browser page maps the bare specifiers through an
 // import map; see run-browser.mjs).
@@ -18,8 +18,8 @@
 // per-endpoint handshake serialization (the incumbent driver's
 // HANDSHAKE_BLOCKING workaround) entirely.
 
-import { envelope, inventoryLookup, runCases } from "@lann/component-test-js/harness";
-import { Context } from "@lann/component-test-js/context";
+import { envelope, inventoryLookup, runCases } from "@polymorph/component-test-js/harness";
+import { Context } from "@polymorph/component-test-js/context";
 
 // The single-attempt wall bound per case, matching the wasmtime leg's
 // --case-timeout: a wedged case is reported (limit-exceeded provenance),
@@ -41,8 +41,8 @@ export function bindImports({ connections, env, cli, clocks, io }) {
     const versioned = name.startsWith("wasi:") ? `${name}@0.2.0` : `${name}@0.1.0`;
     imports[versioned] = impl;
   };
-  bind("lann:websocket/connections", connections);
-  bind("lann:component-test/test-context", { Context });
+  bind("polymorph:websocket/connections", connections);
+  bind("polymorph:component-test/test-context", { Context });
   bind("wasi:cli/environment", envInterface(env));
   bind("wasi:cli/exit", cli.exit);
   bind("wasi:cli/stdin", cli.stdin);

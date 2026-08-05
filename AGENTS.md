@@ -4,11 +4,11 @@ Guidance for automated agents (and humans) working in this repository.
 
 ## What this repository is
 
-`lann:websocket`: a WIT interface for WebSocket client connections plus
+`polymorph:websocket`: a WIT interface for WebSocket client connections plus
 multiple implementations that run the *same* guest component against real
 WebSocket stacks. It is a sibling of
-[`lann:webcrypto`](https://github.com/lann/component-webcrypto) and
-[`lann:webrtc-datachannels`](https://github.com/lann/component-webrtc-datachannels)
+[`polymorph:webcrypto`](https://github.com/polymorph-components/polymorph-webcrypto) and
+[`polymorph:webrtc-datachannels`](https://github.com/polymorph-components/polymorph-webrtc-datachannels)
 and deliberately mirrors their architecture — prefer clarity and
 correctness over features, and keep the implementations behaviourally in
 sync (the cross-implementation conformance suite is the gate). See
@@ -18,12 +18,12 @@ The repository follows the siblings' conventions: the root `justfile` is
 the single entry point (`just check` for the fast gate, `just ci` for the
 exact CI mirror) with component-scoped module justfiles; `scripts/setup.sh`
 is the idempotent dependency setup CI reuses verbatim; conformance is
-driven by a shared guest suite on the `lann:component-test` harness with
+driven by a shared guest suite on the `polymorph:component-test` harness with
 a per-target driver and `targets.toml` declaring target facts.
 
 Layout (each directory's justfile module in parentheses):
 
-- `wit/` — the one copy of the `lann:websocket` package; `wit/README.md`
+- `wit/` — the one copy of the `polymorph:websocket` package; `wit/README.md`
   is the package contract document item docs reference by section name.
 - `rust/wasmtime/` — the `wasmtime-websocket` host crate. Its knobs (the
   connect/close bounds, the inbound-buffer bound) live on
@@ -36,7 +36,7 @@ Layout (each directory's justfile module in parentheses):
   the WPT parity gate (`wpt/README.md` is the vendoring policy; losses
   ratchet in `wpt/parity/losses.js`).
 - `conformance/` (`just conformance-ct`) — the conformance suite on the
-  `lann:component-test` harness: `guest-ct/` (the 52-case suite
+  `polymorph:component-test` harness: `guest-ct/` (the 52-case suite
   component; the committed `tests.lock` is the corpus inventory),
   `driver-ct/` (wasmtime + jco-node + jco-browser + composed legs, `targets.toml`
   with the expected-fail mechanism, the committed `matrix.md`), and
@@ -45,7 +45,7 @@ Layout (each directory's justfile module in parentheses):
   consume the harness as rev-pinned git dependencies (the two
   `[workspace.dependencies]` entries in the root `Cargo.toml`), the
   jco legs consume its JS runner core as a git dep
-  (`@lann/component-test-js` in `driver-ct/jco/package.json`), and the
+  (`@polymorph/component-test-js` in `driver-ct/jco/package.json`), and the
   `component-test` CLI is cargo-installed at the rev Cargo.lock
   records (`conformance-ct::_ct-tools`). One rev everywhere; the root
   `Cargo.toml` comment is the bump checklist. The jco toolchain itself
@@ -92,7 +92,7 @@ it rather than relying on a cached summary.
 These come from the README's design notes; changing one is a design
 decision to record, not a refactor.
 
-- **One copy of the shared WIT package.** The `lann:websocket` package is
+- **One copy of the shared WIT package.** The `polymorph:websocket` package is
   defined exactly once, at the root `wit/`. Components pull it in through
   `wit/deps` **symlinks** back to the root. Do not copy the package into a
   component or replace those symlinks with real directories.
@@ -113,7 +113,7 @@ decision to record, not a refactor.
 - **Client-only.** A listener surface is additive, if ever wanted; do not
   let server-side concerns shape the client resource.
 - **The in-guest provider's TLS posture stays off the shared surface.**
-  `wss:` in-guest comes from composing `lann:tls` with explicit,
+  `wss:` in-guest comes from composing `polymorph:tls` with explicit,
   fail-closed trust anchors (see `rust/guest-provider/README.md`); trust
   decisions never appear on the WIT.
 

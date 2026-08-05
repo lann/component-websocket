@@ -1,4 +1,4 @@
-# The `lann:websocket` package
+# The `polymorph:websocket` package
 
 A WIT interface for WebSocket client connections. This document holds the
 package-wide contracts; item doc comments state what is specific to their

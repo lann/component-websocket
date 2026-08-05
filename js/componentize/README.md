@@ -1,13 +1,13 @@
 # `js/componentize` — the browser-API shim
 
 `websocket.js` is the inverse of `js/jco/websocket.js`: where that module
-implements the `lann:websocket` **imports** over the standard browser
+implements the `polymorph:websocket` **imports** over the standard browser
 `WebSocket` API, this one implements the standard browser API **over the
 WIT imports**, for JS guests componentized with
 [componentize-js](https://github.com/dicej/componentize-js) (the wit-dylib
 reboot). Application code written against `WebSocket` runs unchanged
 inside a component, against any host that serves
-`lann:websocket/connections`.
+`polymorph:websocket/connections`.
 
 The shim's documented deviations from the WHATWG interface live in the
 registry at the top of `websocket.js`, each classified *unserved*,

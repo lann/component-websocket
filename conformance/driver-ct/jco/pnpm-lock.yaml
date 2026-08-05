@@ -14,9 +14,9 @@ importers:
       '@bytecodealliance/preview2-shim':
         specifier: ^0.17.2
         version: 0.17.9
-      '@lann/component-test-js':
-        specifier: github:lann/component-test#1917446e19c9e84cd5b9ad8def56d924f60adf61
-        version: https://codeload.github.com/lann/component-test/tar.gz/1917446e19c9e84cd5b9ad8def56d924f60adf61
+      '@polymorph/component-test-js':
+        specifier: github:polymorph-components/polymorph-test#289a8fdcac71b31589d359cd6e715ef81f232220
+        version: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220
       playwright-core:
         specifier: ^1.61.1
         version: 1.62.1
@@ -47,10 +47,6 @@ packages:
 
   '@emnapi/wasi-threads@1.2.2':
     resolution: {integrity: sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA==}
-
-  '@lann/component-test-js@https://codeload.github.com/lann/component-test/tar.gz/1917446e19c9e84cd5b9ad8def56d924f60adf61':
-    resolution: {gitHosted: true, integrity: sha512-JJQaTMCRBzfl6EZvCBAizp7LXN/O7/xYUbqTAkcgse/D9Rx1wgJHiwzJocBnvcoktZUggziGTnmTJW2SmQn2BQ==, tarball: https://codeload.github.com/lann/component-test/tar.gz/1917446e19c9e84cd5b9ad8def56d924f60adf61}
-    version: 0.2.0
 
   '@napi-rs/wasm-runtime@1.2.2':
     resolution: {integrity: sha512-JfB4kuJQjaoHuCTseIINHtHWeJnvgEcxjwA5t/Y00ZgaOO1Crz3fjT/p8kT28zA/Caz7oiUMn3d6H2yOVCVwuw==}
@@ -186,6 +182,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220':
+    resolution: {gitHosted: true, integrity: sha512-t8wmHlPUX/dLzjTDR7PqhunUsH6He0yc/zFeXtG3nIu2ilQGhu8jCoTSF3TyBK6y5wfpkX38FZYCqd5JLPof5A==, tarball: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220}
+    version: 0.2.0
+
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -239,8 +239,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
-
-  '@lann/component-test-js@https://codeload.github.com/lann/component-test/tar.gz/1917446e19c9e84cd5b9ad8def56d924f60adf61': {}
 
   '@napi-rs/wasm-runtime@1.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
     dependencies:
@@ -312,6 +310,8 @@ snapshots:
 
   '@oxc-minify/binding-win32-x64-msvc@0.136.0':
     optional: true
+
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/289a8fdcac71b31589d359cd6e715ef81f232220': {}
 
   '@tybys/wasm-util@0.10.3':
     dependencies:

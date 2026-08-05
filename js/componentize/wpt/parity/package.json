@@ -1,14 +1,14 @@
 {
-  "name": "@lann/wpt-parity-websocket",
+  "name": "@polymorph/wpt-parity-websocket",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "WPT parity gate: the vendored WebSocket suites run directly against the platform's WebSocket (baseline) and through the componentized shim transpiled by jco against websocket-jco (round trip); compare.mjs holds the round trip to the baseline's pass set.",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "transpile": "node ../../../../scripts/jco-transpile.mjs transpile ../build/parity-runner.component.wasm --name parity-runner --async-mode jspi --no-eager-subtask-return --map 'lann:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' -o generated",
-    "transpile:web": "node ../../../../scripts/jco-transpile.mjs transpile ../build/parity-runner.component.wasm --name parity-runner --async-mode jspi --no-eager-subtask-return --map 'lann:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' --map 'wasi:cli/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/cli.js#*' --map 'wasi:clocks/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/clocks.js#*' --map 'wasi:filesystem/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/filesystem.js#*' --map 'wasi:io/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/io.js#*' --map 'wasi:random/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/random.js#*' --map 'wasi:sockets/*=../sockets-stub.mjs#*' -o generated-web",
-    "transpile:smoke": "node ../../../../scripts/jco-transpile.mjs transpile ../build/smoke.component.wasm --name smoke --async-mode jspi --no-eager-subtask-return --map 'lann:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' -o generated-smoke",
+    "transpile": "node ../../../../scripts/jco-transpile.mjs transpile ../build/parity-runner.component.wasm --name parity-runner --async-mode jspi --no-eager-subtask-return --map 'polymorph:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' -o generated",
+    "transpile:web": "node ../../../../scripts/jco-transpile.mjs transpile ../build/parity-runner.component.wasm --name parity-runner --async-mode jspi --no-eager-subtask-return --map 'polymorph:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' --map 'wasi:cli/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/cli.js#*' --map 'wasi:clocks/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/clocks.js#*' --map 'wasi:filesystem/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/filesystem.js#*' --map 'wasi:io/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/io.js#*' --map 'wasi:random/*=../node_modules/@bytecodealliance/preview2-shim/dist/browser/random.js#*' --map 'wasi:sockets/*=../sockets-stub.mjs#*' -o generated-web",
+    "transpile:smoke": "node ../../../../scripts/jco-transpile.mjs transpile ../build/smoke.component.wasm --name smoke --async-mode jspi --no-eager-subtask-return --map 'polymorph:websocket/*@0.1.0=../../../../jco/websocket.js#*' --map 'wpt:parity/reporter@0.1.0=../../reporter.js#reporter' -o generated-smoke",
     "baseline": "node baseline.mjs",
     "roundtrip": "node --experimental-wasm-jspi roundtrip.mjs",
     "compare": "node compare.mjs"

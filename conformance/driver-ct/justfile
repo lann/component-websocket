@@ -36,7 +36,7 @@ _ct-tools:
     #!/usr/bin/env bash
     set -euo pipefail
     rev="$(grep -om1 'component-test?rev=[0-9a-f]*' '{{root}}/Cargo.lock' | cut -d= -f2)"
-    cargo install --git https://github.com/lann/component-test --rev "$rev" \
+    cargo install --git https://github.com/polymorph-components/polymorph-test --rev "$rev" \
         component-test-cli --root '{{root}}/target/ct-tools'
 
 build-echod:
@@ -46,7 +46,7 @@ build-echod:
 build-provider:
     cargo build --manifest-path {{root}}/Cargo.toml --release -p websocket-guest-provider --target wasm32-wasip2
 
-# The lann:tls component, cloned lazily at the rev pinned by
+# The polymorph:tls component, cloned lazily at the rev pinned by
 # rust/guest-provider/tls-component.rev and built from source (the
 # project publishes no artifacts yet). The checkout lives under target/
 # (build territory).
@@ -57,23 +57,23 @@ build-tls-component:
     dir={{root}}/target/deps/component-tls
     if [ ! -d "$dir/.git" ]; then
         mkdir -p "$(dirname "$dir")"
-        git clone https://github.com/lann/component-tls "$dir"
+        git clone https://github.com/polymorph-components/polymorph-tls "$dir"
     fi
     if [ "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]; then
         git -C "$dir" fetch origin "$rev"
         git -C "$dir" checkout --detach "$rev"
     fi
     cd "$dir"
-    cargo build --release --target wasm32-wasip2 -p lann-tls-component
+    cargo build --release --target wasm32-wasip2 -p polymorph-tls-component
 
-# The composed leg's component: the suite with its lann:websocket import
+# The composed leg's component: the suite with its polymorph:websocket import
 # plugged by the provider (which carries the TLS component for wss:).
 # The composed artifact keeps the suite's file stem (the results
 # envelope names the suite after it; the lockfile must agree) in its own
 # directory.
 compose-suite: build-suite build-provider build-tls-component
     mkdir -p {{root}}/target/wasm32-wasip2/release/composed
-    wac plug --plug {{root}}/target/deps/component-tls/target/wasm32-wasip2/release/lann_tls_component.wasm \
+    wac plug --plug {{root}}/target/deps/component-tls/target/wasm32-wasip2/release/polymorph_tls_component.wasm \
         {{root}}/target/wasm32-wasip2/release/websocket_guest_provider.wasm \
         -o {{root}}/target/wasm32-wasip2/release/composed/websocket-guest-provider-tls.wasm
     wac plug --plug {{root}}/target/wasm32-wasip2/release/composed/websocket-guest-provider-tls.wasm \

@@ -1,4 +1,4 @@
-//! Raw `bindgen!` output for the `lann:websocket` package.
+//! Raw `bindgen!` output for the `polymorph:websocket` package.
 //!
 //! The crate implements the `types` interface and the `connections`
 //! interface's `websocket` resource. See [`crate`] for the public API built
@@ -22,18 +22,18 @@ mod generated {
             // are imported as such by guests, so they are bound
             // synchronously (still `trappable`, but not `async`); they
             // need no store access.
-            "lann:websocket/connections@0.1.0.[method]websocket.protocol": trappable,
-            "lann:websocket/connections@0.1.0.[method]websocket.state": trappable,
-            "lann:websocket/connections@0.1.0.[method]websocket.close": trappable,
+            "polymorph:websocket/connections@0.1.0.[method]websocket.protocol": trappable,
+            "polymorph:websocket/connections@0.1.0.[method]websocket.state": trappable,
+            "polymorph:websocket/connections@0.1.0.[method]websocket.close": trappable,
             // `receive-via-stream` is synchronous in the WIT: it hands back
             // a stream without awaiting. It still needs `store` to allocate
             // the returned stream on the guest's behalf.
-            "lann:websocket/connections@0.1.0.[method]websocket.receive-via-stream": store | trappable,
+            "polymorph:websocket/connections@0.1.0.[method]websocket.receive-via-stream": store | trappable,
         },
         with: {
-            "lann:websocket/connections.websocket": crate::Websocket,
+            "polymorph:websocket/connections.websocket": crate::Websocket,
         },
     });
 }
 
-pub use self::generated::lann::*;
+pub use self::generated::polymorph::*;

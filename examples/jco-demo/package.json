@@ -1,5 +1,5 @@
 {
-  "name": "@lann/websocket-jco-demo",
+  "name": "@polymorph/websocket-jco-demo",
   "version": "0.1.0",
   "private": true,
   "type": "module",

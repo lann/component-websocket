@@ -16,8 +16,8 @@
 //! component-test case-name hierarchy.
 
 use crate::bindings;
-use crate::bindings::lann::websocket::connections::Websocket;
-use crate::bindings::lann::websocket::types::{Error, Message, MessageKind, WebsocketState};
+use crate::bindings::polymorph::websocket::connections::Websocket;
+use crate::bindings::polymorph::websocket::types::{Error, Message, MessageKind, WebsocketState};
 
 /// The per-run configuration (the incumbent harness passed this as a
 /// WIT record), read once from the store environment.
@@ -870,7 +870,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                         let payload = make_payload(index, size);
                         let length = payload.len() as u32;
                         let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                        let message = bindings::lann::websocket::types::StreamMessage {
+                        let message = bindings::polymorph::websocket::types::StreamMessage {
                             kind: MessageKind::Binary,
                             length,
                             data: data_rx,
@@ -1031,7 +1031,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 let send = ws.send_via_stream(rx);
                 let feed = async {
                     let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                    let message = bindings::lann::websocket::types::StreamMessage {
+                    let message = bindings::polymorph::websocket::types::StreamMessage {
                         kind: MessageKind::String,
                         length: bytes.len() as u32,
                         data: data_rx,
@@ -1098,7 +1098,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 let send = ws.send_via_stream(rx);
                 let feed = async {
                     let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                    let message = bindings::lann::websocket::types::StreamMessage {
+                    let message = bindings::polymorph::websocket::types::StreamMessage {
                         kind: MessageKind::String,
                         length: 4,
                         data: data_rx,
@@ -1131,7 +1131,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                     let send = ws.send_via_stream(rx);
                     let feed = async {
                         let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                        let message = bindings::lann::websocket::types::StreamMessage {
+                        let message = bindings::polymorph::websocket::types::StreamMessage {
                             kind: MessageKind::Binary,
                             length: declared,
                             data: data_rx,
@@ -1174,7 +1174,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
             let send = ws.send_via_stream(rx);
             let feed = async {
                 let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                let message = bindings::lann::websocket::types::StreamMessage {
+                let message = bindings::polymorph::websocket::types::StreamMessage {
                     kind: MessageKind::Binary,
                     length: payload.len() as u32,
                     data: data_rx,
@@ -1193,7 +1193,7 @@ async fn run(test_id: &str, config: &TestConfig) -> Result<(), String> {
                 }
                 let _ = ws.wait_closed().await;
                 let (mut data_tx, data_rx) = bindings::wit_stream::new();
-                let message = bindings::lann::websocket::types::StreamMessage {
+                let message = bindings::polymorph::websocket::types::StreamMessage {
                     kind: MessageKind::Binary,
                     length: payload.len() as u32,
                     data: data_rx,

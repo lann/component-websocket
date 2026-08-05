@@ -8,7 +8,7 @@
 # SpiderMonkey build that takes ~20 minutes to compile — and depends on
 # nothing but the revision in js/componentize/componentize-js.rev, so it is
 # downloaded per (revision, platform). The published builds are the
-# webcrypto sibling's (lann/component-webcrypto's componentize-js-toolchain
+# webcrypto sibling's (polymorph-components/polymorph-webcrypto's componentize-js-toolchain
 # workflow): both repositories pin the same revision, and the digests in
 # componentize-js.sha256 pin the exact bytes regardless of who published
 # them. If this repository ever needs a revision the sibling has not
@@ -35,7 +35,7 @@ V=js/componentize/wpt/vendor
 B=js/componentize/wpt/build
 REV="$(cat js/componentize/componentize-js.rev)"
 TOOLCHAIN_DIR=target/toolchains
-COMPONENTIZE_JS_RELEASE="${COMPONENTIZE_JS_RELEASE:-https://github.com/lann/component-webcrypto/releases/download/toolchains}"
+COMPONENTIZE_JS_RELEASE="${COMPONENTIZE_JS_RELEASE:-https://github.com/polymorph-components/polymorph-webcrypto/releases/download/toolchains}"
 
 # The vendored groups, one per WPT file (`<id>.any.js`), in run order.
 GROUP_IDS="

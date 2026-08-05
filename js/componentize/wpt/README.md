@@ -6,7 +6,7 @@ WebSocket suites run twice against the same suite echo server:
 - **baseline** (`parity/baseline.mjs`): directly on this platform's own
   `WebSocket` (Node's built-in) — no shim, no WIT, no wasm;
 - **round trip** (`parity/roundtrip.mjs`): through the full carrier stack —
-  `js/componentize/websocket.js` (the shim), the `lann:websocket` WIT
+  `js/componentize/websocket.js` (the shim), the `polymorph:websocket` WIT
   surface, the component ABI, jco's transpile, and `js/jco/websocket.js` —
   terminating in the same platform WebSocket.
 

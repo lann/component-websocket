@@ -9,6 +9,6 @@ interface demo {
 }
 
 world websocket-echo-demo {
-    import lann:websocket/connections@0.1.0;
+    import polymorph:websocket/connections@0.1.0;
     export demo;
 }

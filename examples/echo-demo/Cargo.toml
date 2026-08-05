@@ -3,7 +3,7 @@ name = "echo-demo"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Example guest component: round-trips messages through a lann:websocket connection"
+description = "Example guest component: round-trips messages through a polymorph:websocket connection"
 
 [lib]
 crate-type = ["cdylib"]

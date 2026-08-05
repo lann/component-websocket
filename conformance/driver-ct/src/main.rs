@@ -2,7 +2,7 @@
 //! harness.
 //!
 //! Embeds the suite echo server in-process, provisions the
-//! `lann:websocket` host ([`wasmtime_websocket`]) with the suite bounds
+//! `polymorph:websocket` host ([`wasmtime_websocket`]) with the suite bounds
 //! (documented on the consts below), hands
 //! the suite its configuration through the store environment
 //! (`WS_CONFORMANCE_*`), and drives the suite with the component-test
@@ -225,7 +225,7 @@ fn run() -> Result<ExitCode> {
 
     let mut runner = Runner::with_data(&suite, make_data, move |linker| {
         if composed {
-            // The composition serves lann:websocket internally over
+            // The composition serves polymorph:websocket internally over
             // wasi:sockets; the leg links WASI p3 for those imports.
             wasmtime_wasi::p3::add_to_linker(linker)
         } else {

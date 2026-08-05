@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../conformance/server/tls"
 days=36500
 openssl ecparam -name prime256v1 -genkey -noout -out ca.key.pem
 openssl req -x509 -new -key ca.key.pem -sha256 -days "$days" \
-    -subj "/CN=lann-websocket conformance TEST CA (do not trust)" \
+    -subj "/CN=polymorph-websocket conformance TEST CA (do not trust)" \
     -addext "basicConstraints=critical,CA:TRUE" \
     -addext "keyUsage=critical,keyCertSign" \
     -out ca.pem
