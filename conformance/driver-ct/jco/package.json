@@ -1,0 +1,20 @@
+{
+  "name": "@lann/websocket-conformance-driver-ct-jco",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "jco legs (Node + headless browser) for the component-test conformance suite: transpile the suite, bind the browser-first host and the test-context shim, emit component-test results JSONL.",
+  "scripts": {
+    "transpile": "jco transpile ../../../target/wasm32-wasip2/release/conformance_guest_ct.wasm --name conformance-guest-ct -I async -o generated && node ../../../scripts/patch-jco-string-lowering.mjs generated/conformance-guest-ct.js",
+    "run:node": "node --experimental-wasm-jspi run-node.mjs",
+    "run:browser": "node run-browser.mjs"
+  },
+  "devDependencies": {
+    "@bytecodealliance/jco": "^1.26.1",
+    "@bytecodealliance/preview2-shim": "^0.17.2",
+    "playwright-core": "^1.61.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

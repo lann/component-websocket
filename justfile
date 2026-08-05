@@ -57,6 +57,11 @@ check-js:
     node --check js/componentize/wpt/parity/run-legs.mjs
     node --check js/componentize/wpt/parity/run-browser.mjs
     node --check js/componentize/wpt/parity/smoke-run.mjs
+    node --check conformance/driver-ct/jco/harness.mjs
+    node --check conformance/driver-ct/jco/context.js
+    node --check conformance/driver-ct/jco/run-node.mjs
+    node --check conformance/driver-ct/jco/run-browser.mjs
+    node --check conformance/driver-ct/jco/echod.mjs
     node --check conformance/adapters/jco/driver.js
     node --check conformance/adapters/jco/chrome.mjs
     node --check conformance/adapters/jco/echod.mjs

@@ -14,3 +14,9 @@ version = "0.1"
 
 [targets.wasmtime]
 missing-features = []
+
+[targets.jco-node]
+missing-features = []
+
+[targets.jco-browser]
+missing-features = []

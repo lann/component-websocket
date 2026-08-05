@@ -59,7 +59,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: conformance/adapters/jco/package-lock.json
+          cache-dependency-path: |
+            conformance/adapters/jco/package-lock.json
+            conformance/driver-ct/jco/package-lock.json
       - name: Install dependencies
         run: ./scripts/setup.sh
         env:

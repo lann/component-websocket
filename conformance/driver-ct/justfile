@@ -1,6 +1,6 @@
-# The component-test conformance harness (migration in progress: the
-# wasmtime leg runs here; the jco legs and the classifier still live in
-# ../justfile until the cutover).
+# The component-test conformance harness (migration in progress: all
+# three legs run here; the incumbent harness in ../justfile stays
+# authoritative until the cutover).
 #
 # Builders produce artifacts, runners execute prebuilt artifacts, the
 # aggregate joins result streams against the committed lockfile and
@@ -15,8 +15,8 @@ results := root / "conformance/driver-ct/results"
 
 default: all
 
-# Build + lockfile gate + run + aggregate + matrix gate.
-all: build lock-check run-wasmtime aggregate matrix-check
+# Build + lockfile gate + run every leg + aggregate + matrix gate.
+all: build lock-check run-wasmtime run-jco-node run-jco-browser aggregate matrix-check
 
 # ----- builders ---------------------------------------------------------------
 
@@ -32,7 +32,16 @@ build-driver:
 _ct-tools:
     cargo build --manifest-path {{ct}}/Cargo.toml -p component-test-cli
 
-build: build-suite build-driver _ct-tools
+build-echod:
+    cargo build --manifest-path {{root}}/Cargo.toml -p conformance-echod
+
+# npm install + transpile (includes the jco string-lowering patch; the
+# echo/text-unicode case guards it).
+_jco-prepared: build-suite build-echod
+    npm --prefix {{root}}/conformance/driver-ct/jco install --silent
+    npm --prefix {{root}}/conformance/driver-ct/jco run transpile
+
+build: build-suite build-driver build-echod _ct-tools _jco-prepared
 
 # ----- lockfile ---------------------------------------------------------------
 
@@ -54,6 +63,12 @@ run-wasmtime: build-suite build-driver
     {{root}}/target/debug/ct-driver {{suite_wasm}} \
         --jsonl --jobs 4 --target wasmtime > {{results}}/wasmtime.jsonl
 
+run-jco-node: _jco-prepared
+    npm --prefix {{root}}/conformance/driver-ct/jco run run:node
+
+run-jco-browser: _jco-prepared
+    npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
+
 # ----- aggregation -------------------------------------------------------------
 
 aggregate: _ct-tools
@@ -61,6 +76,8 @@ aggregate: _ct-tools
         --lock {{root}}/conformance/guest-ct/tests.lock \
         --manifest {{root}}/conformance/driver-ct/targets.toml \
         --results wasmtime={{results}}/wasmtime.jsonl \
+        --results jco-node={{results}}/jco-node.jsonl \
+        --results jco-browser={{results}}/jco-browser.jsonl \
         -o {{results}}/matrix.md
 
 # The committed matrix is the cross-target review surface; regenerate

@@ -42,8 +42,8 @@ Layout (each directory's justfile module in parentheses):
   `TESTS`, `tests.toml`); `verify_corpus` gates the mirrors.
 - `conformance/guest-ct` + `conformance/driver-ct`
   (`just conformance-ct`) — the same 52 cases on the
-  `lann:component-test` harness (migration in progress: the wasmtime leg
-  runs here; jco legs and the cutover are tracked in issues). The
+  `lann:component-test` harness, run against all three targets
+  (migration in progress; the cutover is tracked in issues). The
   committed `guest-ct/tests.lock` replaces the four-way corpus mirror
   for this harness, and `driver-ct/targets.toml` + the #48
   expected-fail mechanism replace `targets.toml` declarations. These
