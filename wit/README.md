@@ -192,11 +192,13 @@ short:
   could promise nothing more than `state` + `wait-closed` do, while
   adding take-once semantics whose "ended without yielding" shape
   collides with meaningful end-of-stream.
-- **`connect` takes plain arguments, not an options builder.** The
-  portable connect surface is exactly a URL and a subprotocol offer.
-  Capabilities behind a future gate (for example request headers on
-  non-browser hosts) would arrive as a builder resource alongside, not by
-  reshaping `connect`.
+- **`connect` takes plain arguments, and the connect surface is
+  complete.** The portable connect surface is exactly a URL and a
+  subprotocol offer — the browser constructor accepts nothing more, and
+  this package carries no capabilities the browser cannot serve. A
+  connect-options gate (request headers, proxy control, and the like on
+  non-browser hosts) was considered and rejected: no unportable connect
+  capabilities, not even gated ones.
 - **Text messages are `string`.** The component model already guarantees
   valid UTF-8 for `string`, which matches the WebSocket text frame
   contract; a text message can never carry invalid UTF-8 on this surface.
