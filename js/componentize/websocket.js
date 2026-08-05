@@ -34,8 +34,9 @@
 // componentize-js runtime lacks a platform capability the spec assumes):
 //
 //   - `extensions` is always the empty string (WIT-forced: the package
-//     deliberately has no extensions surface yet; see repository issue
-//     tracking).
+//     rules extensions off the surface permanently — none can be
+//     offered, configured, or observed; see the package README's
+//     "Portability contract" latitude on transparent negotiation).
 //   - Where the runtime provides no `Blob`, the shim supplies a minimal
 //     one (constructor over string/buffer/view/Blob parts, `size`,
 //     `type`, `arrayBuffer`, `bytes`, `text`, `slice`) so `binaryType`

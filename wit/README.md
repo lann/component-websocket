@@ -144,6 +144,14 @@ everywhere.
 Latitude — points where implementations may differ, recorded here so
 guests do not rely on either behavior:
 
+- **Wire-level extension negotiation.** This surface carries no
+  WebSocket extensions (RFC 6455 section 9): none can be offered,
+  configured, or observed. Implementations may still negotiate
+  extensions transparently where their platform does — a browser-backed
+  implementation always offers `permessage-deflate` and cannot be told
+  not to — so the wire under a connection may be compressed on one
+  implementation and not another. Message semantics, boundaries, and
+  buffering bounds (which count payload bytes) are identical either way.
 - **Failure diagnostics.** The `string` payload of `connect-failed` (and
   the diagnostic detail of abnormal closes generally) is
   implementation-defined and may be empty. Browsers deliberately hide
