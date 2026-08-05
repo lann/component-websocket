@@ -83,7 +83,8 @@ impl WasiWebsocketView for Data {
 }
 
 const USAGE: &str = "usage: ct-driver <suite.wasm> [--jsonl] [--jobs N] [--target key] \
-                     [--only substring] [--case-timeout secs] [--composed]";
+                     [--only substring] [--case-timeout secs] [--composed] \
+                     [--suite-artifact path]";
 
 fn main() -> ExitCode {
     match run() {
@@ -105,6 +106,12 @@ fn run() -> Result<ExitCode> {
     // composition); link full WASI p2+p3 instead of the websocket host,
     // and provision the provider through its environment channel.
     let mut composed = false;
+    // --suite-artifact: bind the results envelope to this (uncomposed)
+    // suite component's bytes instead of the executed artifact, so
+    // cross-target artifact agreement holds for composed runs (the
+    // runner's `bind_suite_artifact` contract: the caller attests the
+    // executed bundle was composed from exactly these bytes).
+    let mut suite_artifact: Option<PathBuf> = None;
     // The incumbent harness's per-test hang guard, kept as the wall
     // bound; the execution budget stays at the runner default (these
     // cases wait on loopback I/O, they don't compute).
@@ -118,6 +125,7 @@ fn run() -> Result<ExitCode> {
         match arg.as_str() {
             "--jsonl" => mode = OutputMode::Jsonl,
             "--composed" => composed = true,
+            "--suite-artifact" => suite_artifact = Some(PathBuf::from(value("--suite-artifact")?)),
             "--jobs" => jobs = value("--jobs")?.parse().context("--jobs")?,
             "--target" => target = value("--target")?,
             "--only" => only = Some(value("--only")?),
@@ -215,7 +223,7 @@ fn run() -> Result<ExitCode> {
         }
     };
 
-    let runner = Runner::with_data(&suite, make_data, move |linker| {
+    let mut runner = Runner::with_data(&suite, make_data, move |linker| {
         if composed {
             // The composition serves lann:websocket internally over
             // wasi:sockets; the leg links WASI p3 for those imports.
@@ -224,6 +232,11 @@ fn run() -> Result<ExitCode> {
             wasmtime_websocket::add_to_linker(linker)
         }
     })?;
+    if let Some(path) = &suite_artifact {
+        let bytes = std::fs::read(path)
+            .with_context(|| format!("reading --suite-artifact {}", path.display()))?;
+        runner.bind_suite_artifact(&bytes);
+    }
     let summary = wasmtime_wasi::runtime::in_tokio(runner.run_suite_opts(
         &suite_name,
         &target,

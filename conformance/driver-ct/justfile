@@ -116,7 +116,8 @@ run-jco-node: _jco-prepared
 run-composed: compose-suite build-driver build-echod
     {{timeout_cmd}} {{root}}/target/debug/ct-driver \
         {{root}}/target/wasm32-wasip2/release/composed/conformance_guest_ct.wasm \
-        --composed --jsonl --jobs 4 --target composed > {{results}}/composed.jsonl
+        --composed --suite-artifact {{suite_wasm}} \
+        --jsonl --jobs 4 --target composed > {{results}}/composed.jsonl
 
 run-jco-browser: _jco-prepared
     {{timeout_cmd}} npm --prefix {{root}}/conformance/driver-ct/jco run run:browser
