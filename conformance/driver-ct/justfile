@@ -64,19 +64,21 @@ build-tls-component:
     set -euo pipefail
     rev="$(cat {{root}}/rust/guest-provider/tls-component.rev)"
     dir={{root}}/target/deps/component-tls
-    if [ ! -d "$dir/.git" ]; then
+    clone() {
+        rm -rf "$dir"
         mkdir -p "$(dirname "$dir")"
         git clone https://github.com/polymorph-components/polymorph-tls "$dir"
-    fi
-    if [ "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]; then
-        # A fresh clone already carries every commit reachable from a
-        # branch, so the pin normally needs no fetch. GitHub's upload-pack
-        # serves fetch-by-sha only best-effort for non-tip commits, so when
-        # the object is missing, fall back to fetching the branches that
-        # make the pin reachable.
+    }
+    [ -d "$dir/.git" ] || clone
+    if [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" != "$rev" ]; then
+        # A clone carries every commit reachable from a branch, so the pin
+        # normally needs no fetch, and GitHub's upload-pack serves
+        # fetch-by-sha only best-effort for non-tip commits. A checkout that
+        # cannot produce the pin even so (e.g. an object store mangled by
+        # target/ caching) is disposable build territory: re-clone.
         git -C "$dir" cat-file -e "$rev^{commit}" 2>/dev/null || \
-            git -C "$dir" fetch origin "$rev" || git -C "$dir" fetch origin
-        git -C "$dir" checkout --detach "$rev"
+            git -C "$dir" fetch origin "$rev" || true
+        git -C "$dir" checkout --detach "$rev" || { clone; git -C "$dir" checkout --detach "$rev"; }
     fi
     cd "$dir"
     cargo build --release --target wasm32-wasip2 -p polymorph-tls-component
