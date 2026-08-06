@@ -67,8 +67,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
+          key: pnpm-store-v2-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-v2-${{ runner.os }}-
       - name: Install dependencies
         run: ./scripts/setup.sh
         env:
@@ -86,7 +86,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && steps.pnpm-cache.outputs.cache-hit != 'true'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
+          key: pnpm-store-v2-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
       - run: just gha::conformance-checks
         # The jco-browser adapter finds the runner's preinstalled Chrome via
         # its candidate paths; CHROME_PATH overrides if ever needed.
