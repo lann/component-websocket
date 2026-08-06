@@ -24,10 +24,12 @@ default-members = [
 # The component-test harness, rev-pinned (no registry release yet).
 # One rev everywhere: these two entries, the CLI install
 # (conformance/driver-ct/justfile reads the rev back out of Cargo.lock),
-# and the @polymorph/component-test-js pin in
-# conformance/driver-ct/jco/package.json. Bump all together, then
+# the @polymorph/component-test-js pin in
+# conformance/driver-ct/jco/package.json, and the actions/aggregate ref
+# in .github/workflows/ci.yml. Bump all together, then
 # `cargo update component-test-sdk component-test-runner` and
-# `pnpm --dir conformance/driver-ct/jco install`.
+# `pnpm --dir conformance/driver-ct/jco install`; the _ct-tools pins
+# gate and the CI ref guard fail on skew.
 component-test-sdk = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
 component-test-runner = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
 anyhow = "1"

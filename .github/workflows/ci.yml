@@ -88,6 +88,37 @@ jobs:
       - run: just gha::conformance-checks
         # The jco-browser adapter finds the runner's preinstalled Chrome via
         # its candidate paths; CHROME_PATH overrides if ever needed.
+
+      # Presentation, not verdict: the just recipe above already gated
+      # the same aggregate; this re-runs it through component-test's
+      # composite action for the job summary and finding annotations,
+      # with the prebuilt CLI so aggregation semantics cannot skew from
+      # the pin. `uses:` cannot interpolate, so the ref is a literal
+      # rev; the guard keeps it on the Cargo.lock pin.
+      - name: Check the aggregate action ref matches the pin
+        if: always()
+        run: |
+          rev=$(grep -m1 -A2 '^name = "component-test-sdk"' Cargo.lock | grep -oE '[0-9a-f]{40}' | head -1)
+          test -n "$rev"
+          if grep -E 'polymorph-test/actions/aggregate@[0-9a-f]{40}' .github/workflows/ci.yml | grep -qv "@$rev"; then
+            echo "aggregate action ref skew: not at the Cargo.lock rev $rev" >&2
+            exit 1
+          fi
+
+      - name: Publish the conformance matrix
+        if: always() && hashFiles('conformance/driver-ct/results/*.jsonl') != ''
+        uses: polymorph-components/polymorph-test/actions/aggregate@824d100349dc7804c9bf1723d9b1ba0ed40fa940
+        with:
+          lock: conformance/guest-ct/tests.lock
+          manifest: conformance/driver-ct/targets.toml
+          results: |
+            wasmtime=conformance/driver-ct/results/wasmtime.jsonl
+            composed=conformance/driver-ct/results/composed.jsonl
+            jco-node=conformance/driver-ct/results/jco-node.jsonl
+            jco-browser=conformance/driver-ct/results/jco-browser.jsonl
+          summary-title: Conformance matrix
+          cli: target/ct-tools/bin/component-test
+
       - name: Upload conformance matrix
         if: always()
         uses: actions/upload-artifact@v4
