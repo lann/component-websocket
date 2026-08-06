@@ -36,11 +36,6 @@ const { values } = parseArgs({
     map: { type: "string", multiple: true },
     "world-name": { type: "string" },
     "out-dir": { type: "string", short: "o" },
-    // Never answer an async-lowered import with a bare RETURNED status;
-    // required for componentize-js guests, whose lowering does not
-    // implement the returned-immediately case (see the option's doc in
-    // jco-transpile).
-    "no-eager-subtask-return": { type: "boolean" },
     // `types` only: WIT `@unstable` gates to enable, like `jco types
     // --feature` (repeatable).
     feature: { type: "string", multiple: true },
@@ -64,7 +59,6 @@ switch (command) {
       instantiation: values.instantiation,
       map,
       outDir: values["out-dir"],
-      noEagerSubtaskReturn: values["no-eager-subtask-return"],
     });
     await writeFiles(files);
     break;
