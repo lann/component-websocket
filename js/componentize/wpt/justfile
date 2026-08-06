@@ -30,14 +30,13 @@ update-losses: _artifacts
 # baseline measures Chromium's own WebSocket, the round trip runs the
 # browser-profile transpile against websocket-jco in the environment it
 # targets. Ratchets separately in parity/losses-chromium.js — a loss set
-# is a fact about one engine's baseline. Currently blocked at the ratchet:
-# some test names embed the echo server's per-run port, so the loss set
-# does not record stably (issue #26); not in CI until that resolves.
+# is a fact about one engine's baseline. Not yet in CI: needs a Chrome
+# 137+ binary on the runner.
 parity-chromium: _artifacts-web
     {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-browser.mjs
 
 # Re-record parity/losses-chromium.js from an actual Chromium run; same
-# review bar as update-losses. Blocked with parity-chromium (issue #26).
+# review bar as update-losses.
 update-losses-chromium: _artifacts-web
     {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-browser.mjs --update
 
