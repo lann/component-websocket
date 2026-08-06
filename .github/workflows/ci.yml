@@ -35,8 +35,8 @@ jobs:
 
   conformance:
     runs-on: ubuntu-latest
-    # Headroom over the warm-path duration: a cold pnpm store rebuilds the
-    # jco-transpile git dependency (a cargo release build).
+    # Headroom over the warm-path duration: a cold cargo cache rebuilds
+    # the suite, driver, and tls-component from scratch.
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -53,12 +53,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # The pnpm store carries the built jco-transpile git dependency, so
-      # a restored store also skips its install-time cargo build. Explicit
-      # restore/save instead of setup-node's `cache: pnpm`: setup-node
-      # restores on the exact lockfile hash only, which would rebuild the
-      # git dependency after any dependency change; the restore-keys
-      # prefix reuses the previous store and rebuilds only what changed.
+      # Explicit restore/save instead of setup-node's `cache: pnpm`:
+      # setup-node restores on the exact lockfile hash only; the
+      # restore-keys prefix reuses the previous store and refetches only
+      # what changed.
       - name: Resolve pnpm store path
         id: pnpm-store
         run: echo "path=$(pnpm store path)" >>"$GITHUB_OUTPUT"

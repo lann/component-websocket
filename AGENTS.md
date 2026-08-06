@@ -48,12 +48,16 @@ Layout (each directory's justfile module in parentheses):
   (`@polymorph/component-test-js` in `driver-ct/jco/package.json`), and the
   `component-test` CLI is cargo-installed at the rev Cargo.lock
   records (`conformance-ct::_ct-tools`). One rev everywhere; the root
-  `Cargo.toml` comment is the bump checklist. The jco toolchain itself
-  is a second rev-pinned git dep: the three JS package trees (pnpm)
-  build `@bytecodealliance/jco-transpile` from a pinned `lann/jco` rev
-  at install time — bumping it means updating each package.json spec
-  and the matching `onlyBuiltDependencies` entry in each
-  `pnpm-workspace.yaml`, then reinstalling.
+  `Cargo.toml` comment is the bump checklist. The jco toolchain is a
+  prebuilt tarball dependency: the three JS package trees (pnpm) consume
+  `@bytecodealliance/jco-transpile` as an https release asset on the
+  `lann/jco` fork, packed from a pinned rev (`pnpm pack` in
+  `packages/jco-transpile` at that rev; prepack runs cargo + tsc).
+  pnpm's git-subpath (`#path:`) dependencies are off the table: pnpm
+  stores the unbuilt repository root under the dependency's store key,
+  which poisons every install after the first. Bumping jco means
+  packing at the new rev, uploading a new release asset on `lann/jco`,
+  updating each package.json spec, then reinstalling.
 - `examples/` (`just demo::…`) — the echo-demo guest and its host runners.
 
 Checks to run before committing, by what changed: WIT or `wit/README.md` →

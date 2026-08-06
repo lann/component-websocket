@@ -68,34 +68,30 @@ check-js:
 test:
     cargo test
 
-# The lann/jco toolchain pin names one rev across all six sites: each JS
-# package tree's package.json dependency spec and its pnpm-workspace.yaml
-# build-script allowlist. Catches a partial bump, which installs cleanly
-# everywhere and drifts silently.
+# The jco toolchain pin names one release-asset URL across all three JS
+# package trees' package.json dependency specs. Catches a partial bump,
+# which installs cleanly everywhere and drifts silently.
 jco-pin-check:
     #!/usr/bin/env bash
     set -euo pipefail
     files=(
         conformance/driver-ct/jco/package.json
-        conformance/driver-ct/jco/pnpm-workspace.yaml
         examples/jco-demo/package.json
-        examples/jco-demo/pnpm-workspace.yaml
         js/componentize/wpt/parity/package.json
-        js/componentize/wpt/parity/pnpm-workspace.yaml
     )
-    revs=()
+    specs=()
     for f in "${files[@]}"; do
-        rev="$(grep -E 'lann/jco' "$f" | grep -oE '[0-9a-f]{40}' | sort -u)"
-        if [ "$(grep -c . <<<"$rev")" -ne 1 ]; then
-            echo "jco-pin-check: expected exactly one lann/jco rev in $f, found:" >&2
-            printf '%s\n' "$rev" >&2
+        spec="$(grep -oE '"@bytecodealliance/jco-transpile": "[^"]+"' "$f" | sort -u)"
+        if [ "$(grep -c . <<<"$spec")" -ne 1 ]; then
+            echo "jco-pin-check: expected exactly one jco-transpile spec in $f, found:" >&2
+            printf '%s\n' "$spec" >&2
             exit 1
         fi
-        revs+=("$rev")
+        specs+=("$spec")
     done
-    if [ "$(printf '%s\n' "${revs[@]}" | sort -u | grep -c .)" -ne 1 ]; then
-        echo "jco-pin-check: lann/jco rev differs across pin sites:" >&2
-        paste <(printf '%s\n' "${files[@]}") <(printf '%s\n' "${revs[@]}") >&2
+    if [ "$(printf '%s\n' "${specs[@]}" | sort -u | grep -c .)" -ne 1 ]; then
+        echo "jco-pin-check: jco-transpile spec differs across pin sites:" >&2
+        paste <(printf '%s\n' "${files[@]}") <(printf '%s\n' "${specs[@]}") >&2
         exit 1
     fi
-    echo "jco pin: ${revs[0]} (6 sites)"
+    echo "jco pin: ${specs[0]#*: } (3 sites)"

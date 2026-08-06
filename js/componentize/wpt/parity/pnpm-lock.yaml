@@ -9,8 +9,8 @@ importers:
   .:
     devDependencies:
       '@bytecodealliance/jco-transpile':
-        specifier: github:lann/jco#fa6990d9def454962fd87ff9b3488873f817490c&path:packages/jco-transpile
-        version: https://codeload.github.com/lann/jco/tar.gz/fa6990d9def454962fd87ff9b3488873f817490c#path:packages/jco-transpile
+        specifier: https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz
+        version: https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz
       '@bytecodealliance/preview2-shim':
         specifier: ^0.19.0
         version: 0.19.0
@@ -20,8 +20,8 @@ importers:
 
 packages:
 
-  '@bytecodealliance/jco-transpile@https://codeload.github.com/lann/jco/tar.gz/fa6990d9def454962fd87ff9b3488873f817490c#path:packages/jco-transpile':
-    resolution: {gitHosted: true, path: packages/jco-transpile, tarball: https://codeload.github.com/lann/jco/tar.gz/fa6990d9def454962fd87ff9b3488873f817490c}
+  '@bytecodealliance/jco-transpile@https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz':
+    resolution: {integrity: sha512-9lvxYCxw7G4kD5lA3iGXYphPeccegoHqMT1m3I1O8XO4BVAaYrOuDxmZg67rrs3VMOXHBTt2uVXnl/SeYUCARQ==, tarball: https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz}
     version: 0.6.2
 
   '@bytecodealliance/preview2-shim@0.19.0':
@@ -197,7 +197,7 @@ packages:
 
 snapshots:
 
-  '@bytecodealliance/jco-transpile@https://codeload.github.com/lann/jco/tar.gz/fa6990d9def454962fd87ff9b3488873f817490c#path:packages/jco-transpile':
+  '@bytecodealliance/jco-transpile@https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz':
     dependencies:
       '@bytecodealliance/preview2-shim': 0.20.1
       '@bytecodealliance/preview3-shim': 0.2.2

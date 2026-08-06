@@ -11,7 +11,7 @@
     "run:browser": "node run-browser.mjs"
   },
   "devDependencies": {
-    "@bytecodealliance/jco-transpile": "github:lann/jco#fa6990d9def454962fd87ff9b3488873f817490c&path:packages/jco-transpile",
+    "@bytecodealliance/jco-transpile": "https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz",
     "@bytecodealliance/preview2-shim": "^0.17.2",
     "@polymorph/component-test-js": "github:polymorph-components/polymorph-test#b80c13be7b9fecfed8ec10a91d23d8cf8349defe",
     "playwright-core": "^1.61.1"
