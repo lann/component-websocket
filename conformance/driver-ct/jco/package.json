@@ -13,7 +13,7 @@
   "devDependencies": {
     "@bytecodealliance/jco-transpile": "https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz",
     "@bytecodealliance/preview2-shim": "^0.17.2",
-    "@polymorph/component-test-js": "github:polymorph-components/polymorph-test#b80c13be7b9fecfed8ec10a91d23d8cf8349defe",
+    "@polymorph/component-test-js": "github:polymorph-components/polymorph-test#824d100349dc7804c9bf1723d9b1ba0ed40fa940",
     "playwright-core": "^1.61.1"
   },
   "engines": {

@@ -28,8 +28,8 @@ default-members = [
 # conformance/driver-ct/jco/package.json. Bump all together, then
 # `cargo update component-test-sdk component-test-runner` and
 # `pnpm --dir conformance/driver-ct/jco install`.
-component-test-sdk = { git = "https://github.com/polymorph-components/polymorph-test", rev = "b80c13be7b9fecfed8ec10a91d23d8cf8349defe" }
-component-test-runner = { git = "https://github.com/polymorph-components/polymorph-test", rev = "b80c13be7b9fecfed8ec10a91d23d8cf8349defe" }
+component-test-sdk = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
+component-test-runner = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
 anyhow = "1"
 bytes = "1"
 futures = "0.3"

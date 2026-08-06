@@ -28,16 +28,25 @@ build-suite:
 build-driver:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-ct-driver
 
-# The component-test CLI, installed from the same git rev Cargo.lock
-# pins for the library crates (the lock is the single source of truth;
-# same-rev reruns are a no-op "already installed"). No --locked:
-# component-test does not commit a Cargo.lock.
+# The component-test CLI, installed --locked from the same git rev
+# Cargo.lock pins for the library crates (the lock is the single source
+# of truth; same-rev reruns are a no-op "already installed"). The
+# bootstrap extraction anchors on the crate name, not the repository
+# URL (URLs change on renames): the sdk's [[package]] block in
+# Cargo.lock carries the git source to install from. The pins gate then
+# asserts one rev everywhere — a skewed bump runs the JS harness
+# against a Rust runner from a different rev.
 _ct-tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    rev="$(grep -om1 'polymorph-test?rev=[0-9a-f]*' '{{root}}/Cargo.lock' | cut -d= -f2)"
-    cargo install --git https://github.com/polymorph-components/polymorph-test --rev "$rev" \
+    block="$(grep -m1 -A2 '^name = "component-test-sdk"' '{{root}}/Cargo.lock')"
+    rev="$(grep -oE '[0-9a-f]{40}' <<< "$block" | head -1)"
+    url="$(grep -oE 'git\+[^?"]+' <<< "$block" | head -1 | cut -c5-)"
+    { [ -n "$rev" ] && [ -n "$url" ]; } || { echo "no component-test git source in Cargo.lock" >&2; exit 1; }
+    cargo install --locked --git "$url" --rev "$rev" \
         component-test-cli --root '{{root}}/target/ct-tools'
+    '{{ct_cli}}' pins --cargo-lock '{{root}}/Cargo.lock' \
+        --js-lock jco/pnpm-lock.yaml --expect "$rev" > /dev/null
 
 build-echod:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-echod
