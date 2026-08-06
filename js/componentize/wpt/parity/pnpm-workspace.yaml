@@ -7,3 +7,13 @@
 # build scripts. Bumping the pinned rev means updating this entry to match.
 onlyBuiltDependencies:
   - "@bytecodealliance/jco-transpile@https://codeload.github.com/lann/jco/tar.gz/fa6990d9def454962fd87ff9b3488873f817490c#path:packages/jco-transpile"
+
+# Workaround for a pnpm store defect with git dependencies installed from a
+# monorepo subpath (`#path:`): the store index for the tarball records the
+# repository root's metadata (jco@0.0.0), so any later install reading the
+# entry back fails the strict name/version check with
+# ERR_PNPM_UNEXPECTED_PKG_CONTENT_IN_STORE (reproduced on pnpm 10.34.5 and
+# 11.20.0 with a fresh store). Tarball integrity is still verified against
+# the lockfile at download; only the store read-back metadata check is
+# relaxed.
+strictStorePkgContentCheck: false
