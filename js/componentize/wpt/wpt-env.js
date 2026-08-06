@@ -28,17 +28,20 @@ Object.defineProperty(globalThis, "SCHEME_DOMAIN_PORT", {
 });
 
 // A minimal `location` for suites that build negative-case URLs from the
-// page origin. The values are inert (nothing serves them); identical in
-// both parity legs so the comparison stays fair.
-if (globalThis.location === undefined) {
-  globalThis.location = {
-    protocol: "http:",
-    host: "web-platform.test:8001",
-    hostname: "web-platform.test",
-    origin: "http://web-platform.test:8001",
-    search: "",
-  };
-}
+// page origin. The values are inert (nothing serves them) and are
+// wptserve's canonical host:port, so interpolated test names match
+// upstream WPT's. A module-scoped `const` deliberately shadows
+// `window.location` when a leg runs in a browser page: suites that
+// interpolate `location` into test names (Create-invalid-urls) must
+// evaluate identical names in every leg, or the parity keys embed the
+// page server's per-run ephemeral port and the legs' name sets diverge.
+const location = {
+  protocol: "http:",
+  host: "web-platform.test:8001",
+  hostname: "web-platform.test",
+  origin: "http://web-platform.test:8001",
+  search: "",
+};
 
 function IsWebSocket() {
   if (!self.WebSocket) {

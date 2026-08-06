@@ -16,11 +16,6 @@
 //
 // jco's async ABI needs JSPI; Chrome ships it enabled from 137 onward.
 //
-// KNOWN BLOCKED (issue #26): both legs complete, but several vendored
-// tests interpolate the echo server's per-run port into their names, so
-// the recorded loss set does not key stably across runs. This runner
-// stays out of CI until the ratchet keys are stable.
-//
 // Usage: node run-browser.mjs [--update]
 
 import http from "node:http";
