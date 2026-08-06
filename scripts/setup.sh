@@ -6,9 +6,8 @@
 #   - wasm-tools, wac, just (via cargo-binstall, versions pinned below)
 #   - pnpm (via npm, version pinned below)
 #   - JS dependencies for the package trees (skipped with SKIP_NODE=1);
-#     the jco-transpile git dependency builds itself on first install
-#     (cargo inside the cloned jco monorepo — the Rust toolchain must be
-#     present), then lands in the pnpm store, so reinstalls are cheap
+#     the jco toolchain arrives as a prebuilt release-asset tarball
+#     (@bytecodealliance/jco-transpile), so installs run no cargo build
 #
 # Prerequisites it does NOT install: rustup itself, Node 24+ and npm.
 #
