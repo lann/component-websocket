@@ -36,8 +36,8 @@ Layout (each directory's justfile module in parentheses):
   the WPT parity gate (`wpt/README.md` is the vendoring policy; losses
   ratchet in `wpt/parity/losses.js`).
 - `conformance/` (`just conformance-ct`) — the conformance suite on the
-  `polymorph:test` harness: `guest-ct/` (the 52-case suite
-  component; the committed `tests.lock` is the corpus inventory),
+  `polymorph:test` harness: `guest-ct/` (the suite component; the
+  committed `tests.lock` is the corpus inventory),
   `driver-ct/` (wasmtime + jco-node + jco-browser + composed legs, `targets.toml`
   with the expected-fail mechanism, the committed `matrix.md`), and
   `server/` (echod; `server/PROTOCOL.md` is its wire contract,
