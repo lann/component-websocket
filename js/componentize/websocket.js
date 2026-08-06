@@ -1,6 +1,6 @@
 // @ts-check
 // A WHATWG `WebSocket` shim for JS guests componentized with
-// componentize-js (https://github.com/dicej/componentize-js, the wit-dylib
+// componentize-js (https://github.com/lann/componentize-js, the wit-dylib
 // reboot of ComponentizeJS), backed by the `polymorph:websocket` imports.
 //
 // This is the inverse of `js/jco/websocket.js`: that module implements the

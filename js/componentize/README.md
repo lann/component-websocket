@@ -4,7 +4,7 @@
 implements the `polymorph:websocket` **imports** over the standard browser
 `WebSocket` API, this one implements the standard browser API **over the
 WIT imports**, for JS guests componentized with
-[componentize-js](https://github.com/dicej/componentize-js) (the wit-dylib
+[componentize-js](https://github.com/lann/componentize-js) (the wit-dylib
 reboot). Application code written against `WebSocket` runs unchanged
 inside a component, against any host that serves
 `polymorph:websocket/connections`.
