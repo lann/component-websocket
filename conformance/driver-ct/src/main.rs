@@ -207,7 +207,10 @@ fn run() -> Result<ExitCode> {
                 "POLYMORPH_WEBSOCKET_CLOSE_TIMEOUT_MS",
                 CLOSE_TIMEOUT.as_millis().to_string(),
             )
-            .env("POLYMORPH_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
+            .env(
+                "POLYMORPH_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES",
+                &buffer_bytes,
+            )
             .env(
                 "POLYMORPH_WEBSOCKET_TLS_ROOTS_PEM",
                 conformance_echod::TEST_CA_PEM,
