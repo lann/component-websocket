@@ -1,6 +1,7 @@
-// Chrome/Chromium discovery shared by every headless-browser runner (the
-// conformance jco-browser leg and the WPT parity browser legs).
-// Node-only.
+// Chrome/Chromium discovery for the conformance jco-browser leg, which
+// prefers a system Chrome. (The WPT parity browser legs do not use this:
+// they always launch Playwright's own pinned build, so the recorded loss
+// set measures one engine everywhere.) Node-only.
 import { access, readdir } from "node:fs/promises";
 import { join } from "node:path";
 

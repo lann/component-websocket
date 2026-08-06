@@ -14,7 +14,11 @@
 // echo server directly: WebSocket is not subject to CORS, and a localhost
 // `http:` page may open `ws:` connections.
 //
-// jco's async ABI needs JSPI; Chrome ships it enabled from 137 onward.
+// The browser is always Playwright's own Chromium build, pinned by
+// playwright-core's version (the parity lockfile), so losses-chromium.js
+// measures one engine everywhere — local runs and CI alike. Install it
+// once with `npx playwright-core install --with-deps chromium` (from this
+// directory). jco's async ABI needs JSPI; Chromium ships it.
 //
 // Usage: node run-browser.mjs [--update]
 
@@ -26,7 +30,6 @@ import { fileURLToPath } from "node:url";
 
 import { chromium } from "playwright-core";
 
-import { findChrome } from "../../../../scripts/chrome.mjs";
 import { spawnEchod } from "../../../../conformance/server/echod.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -99,18 +102,12 @@ async function main() {
     throw new Error(`missing browser-profile transpile in ${join(HERE, "generated-web")}; run "npm run transpile:web" first`);
   }
 
-  const executablePath = await findChrome();
-  if (!executablePath) {
-    throw new Error("no Chrome/Chromium binary found; set CHROME_PATH to a Chrome 137+ executable");
-  }
-
   const echod = await spawnEchod(join(REPO_ROOT, "target", "debug", "conformance-echod"));
   const server = await startServer();
   const base = `http://127.0.0.1:${server.address().port}`;
   process.stderr.write(`echo server at ${echod.base}; page served from ${base}\n`);
 
   const browser = await chromium.launch({
-    executablePath,
     headless: true,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });

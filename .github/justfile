@@ -34,4 +34,5 @@ rust-checks:
 conformance-checks:
     @just gha::_step conformance-ct::all
     @just gha::_step wpt::parity
+    @just gha::_step wpt::parity-chromium
     @just gha::_step demo::test
