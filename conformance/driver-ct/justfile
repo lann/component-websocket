@@ -69,7 +69,13 @@ build-tls-component:
         git clone https://github.com/polymorph-components/polymorph-tls "$dir"
     fi
     if [ "$(git -C "$dir" rev-parse HEAD)" != "$rev" ]; then
-        git -C "$dir" fetch origin "$rev"
+        # A fresh clone already carries every commit reachable from a
+        # branch, so the pin normally needs no fetch. GitHub's upload-pack
+        # serves fetch-by-sha only best-effort for non-tip commits, so when
+        # the object is missing, fall back to fetching the branches that
+        # make the pin reachable.
+        git -C "$dir" cat-file -e "$rev^{commit}" 2>/dev/null || \
+            git -C "$dir" fetch origin "$rev" || git -C "$dir" fetch origin
         git -C "$dir" checkout --detach "$rev"
     fi
     cd "$dir"
