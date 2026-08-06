@@ -30,8 +30,10 @@ update-losses: _artifacts
 # baseline measures Chromium's own WebSocket, the round trip runs the
 # browser-profile transpile against websocket-jco in the environment it
 # targets. Ratchets separately in parity/losses-chromium.js — a loss set
-# is a fact about one engine's baseline. Not yet in CI: needs a Chrome
-# 137+ binary on the runner.
+# is a fact about one engine's baseline. The browser is always
+# Playwright's pinned Chromium build (install once with
+# `npx playwright-core install --with-deps chromium` from parity/), so
+# the loss set measures one engine everywhere.
 parity-chromium: _artifacts-web
     {{timeout_cmd}} node {{root}}/js/componentize/wpt/parity/run-browser.mjs
 
