@@ -25,13 +25,13 @@ const DEFAULT_MAX_INBOUND_BUFFER_BYTES: usize = 8 * 1024 * 1024;
 impl Config {
     pub(crate) fn from_env() -> Config {
         Config {
-            connect_timeout: millis_var("LANN_WEBSOCKET_CONNECT_TIMEOUT_MS")
+            connect_timeout: millis_var("POLYMORPH_WEBSOCKET_CONNECT_TIMEOUT_MS")
                 .unwrap_or(DEFAULT_CONNECT_TIMEOUT),
-            close_timeout: millis_var("LANN_WEBSOCKET_CLOSE_TIMEOUT_MS")
+            close_timeout: millis_var("POLYMORPH_WEBSOCKET_CLOSE_TIMEOUT_MS")
                 .unwrap_or(DEFAULT_CLOSE_TIMEOUT),
-            max_inbound_buffer_bytes: usize_var("LANN_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES")
+            max_inbound_buffer_bytes: usize_var("POLYMORPH_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES")
                 .unwrap_or(DEFAULT_MAX_INBOUND_BUFFER_BYTES),
-            tls_roots_pem: std::env::var("LANN_WEBSOCKET_TLS_ROOTS_PEM").ok(),
+            tls_roots_pem: std::env::var("POLYMORPH_WEBSOCKET_TLS_ROOTS_PEM").ok(),
         }
     }
 }

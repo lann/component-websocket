@@ -56,10 +56,10 @@ embedder controls the environment through its WASI context:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `LANN_WEBSOCKET_CONNECT_TIMEOUT_MS` | the connect/handshake bound | `30000` |
-| `LANN_WEBSOCKET_CLOSE_TIMEOUT_MS` | the closing-procedure bound | `10000` |
-| `LANN_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES` | the inbound-buffer bound | `8388608` (8 MiB) |
-| `LANN_WEBSOCKET_TLS_ROOTS_PEM` | `wss:` trust anchors, as a PEM bundle | unset (`wss:` fails closed) |
+| `POLYMORPH_WEBSOCKET_CONNECT_TIMEOUT_MS` | the connect/handshake bound | `30000` |
+| `POLYMORPH_WEBSOCKET_CLOSE_TIMEOUT_MS` | the closing-procedure bound | `10000` |
+| `POLYMORPH_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES` | the inbound-buffer bound | `8388608` (8 MiB) |
+| `POLYMORPH_WEBSOCKET_TLS_ROOTS_PEM` | `wss:` trust anchors, as a PEM bundle | unset (`wss:` fails closed) |
 
 These are the same implementation-defined bounds every implementation
 exposes through its own channel (see `wit/README.md`, "Portability

@@ -200,16 +200,16 @@ fn run() -> Result<ExitCode> {
             // bounds the hosted legs configure, plus the test CA, plus
             // real network access for its wasi:sockets imports.
             wasi.env(
-                "LANN_WEBSOCKET_CONNECT_TIMEOUT_MS",
+                "POLYMORPH_WEBSOCKET_CONNECT_TIMEOUT_MS",
                 CONNECT_TIMEOUT.as_millis().to_string(),
             )
             .env(
-                "LANN_WEBSOCKET_CLOSE_TIMEOUT_MS",
+                "POLYMORPH_WEBSOCKET_CLOSE_TIMEOUT_MS",
                 CLOSE_TIMEOUT.as_millis().to_string(),
             )
-            .env("LANN_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
+            .env("POLYMORPH_WEBSOCKET_MAX_INBOUND_BUFFER_BYTES", &buffer_bytes)
             .env(
-                "LANN_WEBSOCKET_TLS_ROOTS_PEM",
+                "POLYMORPH_WEBSOCKET_TLS_ROOTS_PEM",
                 conformance_echod::TEST_CA_PEM,
             )
             .inherit_network()

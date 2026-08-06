@@ -122,7 +122,7 @@ async fn establish(
             Some(pem) => Some(parse_pem_certificates(pem)?),
             None => {
                 return Err("no TLS trust anchors configured; wss: fails closed (set \
-                     LANN_WEBSOCKET_TLS_ROOTS_PEM; see the provider README)"
+                     POLYMORPH_WEBSOCKET_TLS_ROOTS_PEM; see the provider README)"
                     .to_string())
             }
         }
