@@ -85,6 +85,29 @@ jobs:
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-store-v2-${{ runner.os }}-${{ hashFiles('conformance/driver-ct/jco/pnpm-lock.yaml', 'examples/jco-demo/pnpm-lock.yaml', 'js/componentize/wpt/parity/pnpm-lock.yaml') }}
+      # The WPT parity Chromium leg always runs Playwright's own build,
+      # pinned by playwright-core's version in the parity lockfile, so
+      # losses-chromium.js measures one engine everywhere. The cache key
+      # follows that lockfile; restore-keys lets a playwright bump start
+      # from the previous browsers and download only what changed.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('js/componentize/wpt/parity/pnpm-lock.yaml') }}
+          restore-keys: playwright-${{ runner.os }}-
+      - name: Install Playwright Chromium
+        # On a cache hit the install only verifies the browser is present;
+        # --with-deps (an apt run) is needed only when the browser was
+        # actually (re)downloaded.
+        run: |
+          cd js/componentize/wpt/parity
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright-core install chromium
+          else
+            npx playwright-core install --with-deps chromium
+          fi
       - run: just gha::conformance-checks
         # The jco-browser adapter finds the runner's preinstalled Chrome via
         # its candidate paths; CHROME_PATH overrides if ever needed.

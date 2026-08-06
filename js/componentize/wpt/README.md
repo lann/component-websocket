@@ -31,9 +31,12 @@ unbundled. Each engine ratchets separately (`parity/losses-chromium.js`,
 re-recorded with `just wpt::update-losses-chromium`): a loss set is a fact
 about one engine's baseline.
 
-The Chromium gate is not yet in CI: it needs a Chrome 137+ binary on the
-runner. Test names are engine-independent by construction — `wpt-env.js`
-shadows `location` with a fixed stub in every leg, so names never embed a
+The Chromium legs always run Playwright's own build, pinned by
+playwright-core's version in the parity lockfile, so the loss set
+measures one engine everywhere — local runs and CI alike; a Chromium
+behavior shift arrives only with a deliberate playwright bump. Test
+names are engine-independent by construction — `wpt-env.js` shadows
+`location` with a fixed stub in every leg, so names never embed a
 per-run origin.
 
 ## Vendoring policy
