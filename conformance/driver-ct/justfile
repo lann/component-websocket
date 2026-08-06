@@ -35,7 +35,7 @@ build-driver:
 _ct-tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    rev="$(grep -om1 'component-test?rev=[0-9a-f]*' '{{root}}/Cargo.lock' | cut -d= -f2)"
+    rev="$(grep -om1 'polymorph-test?rev=[0-9a-f]*' '{{root}}/Cargo.lock' | cut -d= -f2)"
     cargo install --git https://github.com/polymorph-components/polymorph-test --rev "$rev" \
         component-test-cli --root '{{root}}/target/ct-tools'
 
