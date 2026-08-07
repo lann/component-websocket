@@ -40,6 +40,7 @@ const IMPORT_MAP = JSON.stringify({
   imports: {
     "@polymorph/component-test-js/harness": "/ct/harness.mjs",
     "@polymorph/component-test-js/context": "/ct/context.js",
+    "@polymorph/component-test-js/imports": "/ct/imports.mjs",
   },
 });
 

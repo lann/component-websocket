@@ -20,6 +20,10 @@
 
 import { envelope, inventoryLookup, runCases } from "@polymorph/component-test-js/harness";
 import { Context } from "@polymorph/component-test-js/context";
+import {
+  bindImports as bindCoreImports,
+  envInterface,
+} from "@polymorph/component-test-js/imports";
 
 // The single-attempt wall bound per case, matching the wasmtime leg's
 // --case-timeout: a wedged case is reported (limit-exceeded provenance),
@@ -30,45 +34,19 @@ import { Context } from "@polymorph/component-test-js/context";
 const CASE_TIMEOUT_MS = 60_000;
 
 /**
- * The suite's import object, both key spellings (the generated code
- * mixes versioned and unversioned): the SUT host, the test-context
- * provider (upstream's), the config environment, and the wasi shims.
+ * The suite's import object over the upstream builder: the SUT host,
+ * the test-context provider, the config environment, and the wasi
+ * shims.
  */
 export function bindImports({ connections, env, cli, clocks, io }) {
-  const imports = {};
-  const bind = (name, impl) => {
-    imports[name] = impl;
-    const versioned = name.startsWith("wasi:") ? `${name}@0.2.0` : `${name}@0.1.0`;
-    imports[versioned] = impl;
-  };
-  bind("polymorph:websocket/connections", connections);
-  bind("polymorph:test/test-context", { Context });
-  bind("wasi:cli/environment", envInterface(env));
-  bind("wasi:cli/exit", cli.exit);
-  bind("wasi:cli/stdin", cli.stdin);
-  bind("wasi:cli/stdout", cli.stdout);
-  bind("wasi:cli/stderr", cli.stderr);
-  bind("wasi:cli/terminal-input", cli.terminalInput);
-  bind("wasi:cli/terminal-output", cli.terminalOutput);
-  bind("wasi:cli/terminal-stdin", cli.terminalStdin);
-  bind("wasi:cli/terminal-stdout", cli.terminalStdout);
-  bind("wasi:cli/terminal-stderr", cli.terminalStderr);
-  bind("wasi:clocks/monotonic-clock", clocks.monotonicClock);
-  bind("wasi:clocks/wall-clock", clocks.wallClock);
-  bind("wasi:io/error", io.error);
-  bind("wasi:io/poll", io.poll);
-  bind("wasi:io/streams", io.streams);
-  return imports;
+  return bindCoreImports({
+    wasi: { cli, clocks, io },
+    env,
+    sut: { "polymorph:websocket/connections": connections },
+  });
 }
 
-/** One environment interface for both legs (explicit > shim-internal). */
-export function envInterface(vars) {
-  return {
-    getEnvironment: () => vars,
-    getArguments: () => [],
-    initialCwd: () => undefined,
-  };
-}
+export { envInterface };
 
 /**
  * Run the whole suite through the upstream case loop. `newInstance()`

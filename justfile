@@ -60,7 +60,6 @@ check-js:
     node --check conformance/driver-ct/jco/run-browser.mjs
     node --check conformance/server/echod.mjs
     node --check scripts/chrome.mjs
-    node --check scripts/jco-transpile.mjs
     node --check examples/jco-demo/run.mjs
     @echo "js: ok"
 

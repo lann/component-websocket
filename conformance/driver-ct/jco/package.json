@@ -6,14 +6,14 @@
   "description": "jco legs (Node + headless browser) for the component-test conformance suite: transpile the suite, bind the browser-first host and the test-context shim, emit component-test results JSONL.",
   "packageManager": "pnpm@10.34.5",
   "scripts": {
-    "transpile": "node ../../../scripts/jco-transpile.mjs transpile ../../../target/wasm32-wasip2/release/conformance_guest_ct.wasm --name conformance-guest-ct -I async -o generated",
+    "transpile": "component-test-jco-transpile transpile ../../../target/wasm32-wasip2/release/conformance_guest_ct.wasm --name conformance-guest-ct -I async -o generated",
     "run:node": "node --experimental-wasm-jspi run-node.mjs",
     "run:browser": "node run-browser.mjs"
   },
   "devDependencies": {
     "@bytecodealliance/jco-transpile": "https://github.com/lann/jco/releases/download/jco-transpile-0.6.2-fa6990d/bytecodealliance-jco-transpile-0.6.2.tgz",
     "@bytecodealliance/preview2-shim": "^0.17.2",
-    "@polymorph/component-test-js": "github:polymorph-components/polymorph-test#824d100349dc7804c9bf1723d9b1ba0ed40fa940",
+    "@polymorph/component-test-js": "github:polymorph-components/polymorph-test#76c094576076284c1a7d0ea1b7bb724e9e7384a5",
     "playwright-core": "^1.61.1"
   },
   "engines": {

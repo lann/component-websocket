@@ -30,8 +30,8 @@ default-members = [
 # `cargo update component-test-sdk component-test-runner` and
 # `pnpm --dir conformance/driver-ct/jco install`; the _ct-tools pins
 # gate and the CI ref guard fail on skew.
-component-test-sdk = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
-component-test-runner = { git = "https://github.com/polymorph-components/polymorph-test", rev = "824d100349dc7804c9bf1723d9b1ba0ed40fa940" }
+component-test-sdk = { git = "https://github.com/polymorph-components/polymorph-test", rev = "76c094576076284c1a7d0ea1b7bb724e9e7384a5" }
+component-test-runner = { git = "https://github.com/polymorph-components/polymorph-test", rev = "76c094576076284c1a7d0ea1b7bb724e9e7384a5" }
 anyhow = "1"
 bytes = "1"
 futures = "0.3"
