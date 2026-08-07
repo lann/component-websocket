@@ -14,6 +14,9 @@ importers:
       '@bytecodealliance/preview2-shim':
         specifier: ^0.19.0
         version: 0.19.0
+      '@polymorph/component-test-js':
+        specifier: github:polymorph-components/polymorph-test#76c094576076284c1a7d0ea1b7bb724e9e7384a5
+        version: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/76c094576076284c1a7d0ea1b7bb724e9e7384a5
       playwright-core:
         specifier: ^1.61.1
         version: 1.62.1
@@ -176,6 +179,11 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/76c094576076284c1a7d0ea1b7bb724e9e7384a5':
+    resolution: {gitHosted: true, integrity: sha512-e1ojI6hXZB3RQBrQdxob0BNg0+S3sVAKAOykKs9iqfy3qXVWFsQa+nXJ+px1bXXGB7TBSauJygWin9ANtNZAHw==, tarball: https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/76c094576076284c1a7d0ea1b7bb724e9e7384a5}
+    version: 0.2.0
+    hasBin: true
+
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
 
@@ -298,6 +306,8 @@ snapshots:
 
   '@oxc-minify/binding-win32-x64-msvc@0.136.0':
     optional: true
+
+  '@polymorph/component-test-js@https://codeload.github.com/polymorph-components/polymorph-test/tar.gz/76c094576076284c1a7d0ea1b7bb724e9e7384a5': {}
 
   '@tybys/wasm-util@0.10.3':
     dependencies:

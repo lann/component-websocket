@@ -47,6 +47,16 @@ jobs:
           shared-key: conformance
           cache-all-crates: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install the component-test tools at the pinned revision
+        # Owns the rev derivation, the rev-keyed tools cache, the
+        # install, and the pins gate; the justfile's _ct-tools
+        # recognizes the stamped install and does not repeat it.
+        uses: polymorph-components/polymorph-test/actions/setup@76c094576076284c1a7d0ea1b7bb724e9e7384a5
+        with:
+          tools: component-test-cli
+          js-locks: |
+            conformance/driver-ct/jco/pnpm-lock.yaml
+            js/componentize/wpt/parity/pnpm-lock.yaml
       - uses: pnpm/action-setup@v4
         with:
           version: 10.34.5
@@ -116,21 +126,11 @@ jobs:
       # the same aggregate; this re-runs it through component-test's
       # composite action for the job summary and finding annotations,
       # with the prebuilt CLI so aggregation semantics cannot skew from
-      # the pin. `uses:` cannot interpolate, so the ref is a literal
-      # rev; the guard keeps it on the Cargo.lock pin.
-      - name: Check the aggregate action ref matches the pin
-        if: always()
-        run: |
-          rev=$(grep -m1 -A2 '^name = "component-test-sdk"' Cargo.lock | grep -oE '[0-9a-f]{40}' | head -1)
-          test -n "$rev"
-          if grep -E 'polymorph-test/actions/aggregate@[0-9a-f]{40}' .github/workflows/ci.yml | grep -qv "@$rev"; then
-            echo "aggregate action ref skew: not at the Cargo.lock rev $rev" >&2
-            exit 1
-          fi
-
+      # the pin. The action's cargo-lock input polices the `uses:` ref
+      # against the pin.
       - name: Publish the conformance matrix
         if: always() && hashFiles('conformance/driver-ct/results/*.jsonl') != ''
-        uses: polymorph-components/polymorph-test/actions/aggregate@824d100349dc7804c9bf1723d9b1ba0ed40fa940
+        uses: polymorph-components/polymorph-test/actions/aggregate@76c094576076284c1a7d0ea1b7bb724e9e7384a5
         with:
           lock: conformance/guest-ct/tests.lock
           manifest: conformance/driver-ct/targets.toml
@@ -141,6 +141,7 @@ jobs:
             jco-browser=conformance/driver-ct/results/jco-browser.jsonl
           summary-title: Conformance matrix
           cli: target/ct-tools/bin/component-test
+          cargo-lock: Cargo.lock
 
       - name: Upload conformance matrix
         if: always()

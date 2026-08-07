@@ -39,14 +39,18 @@ build-driver:
 _ct-tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    block="$(grep -m1 -A2 '^name = "component-test-sdk"' '{{root}}/Cargo.lock')"
-    rev="$(grep -oE '[0-9a-f]{40}' <<< "$block" | head -1)"
-    url="$(grep -oE 'git\+[^?"]+' <<< "$block" | head -1 | cut -c5-)"
-    { [ -n "$rev" ] && [ -n "$url" ]; } || { echo "no component-test git source in Cargo.lock" >&2; exit 1; }
-    cargo install --locked --git "$url" --rev "$rev" \
-        component-test-cli --root '{{root}}/target/ct-tools'
-    '{{ct_cli}}' pins --cargo-lock '{{root}}/Cargo.lock' \
-        --js-lock jco/pnpm-lock.yaml --expect "$rev" > /dev/null
+    cd '{{root}}'
+    src=$(grep -m1 -A2 '^name = "component-test-sdk"' Cargo.lock | grep '^source = "git+')
+    url=$(printf '%s' "$src" | sed -E 's/^source = "git\+([^?]+)\?.*/\1/')
+    rev=$(printf '%s' "$src" | grep -oE '[0-9a-f]{40}' | head -n1)
+    if [ ! -x target/ct-tools/bin/component-test ] || [ "$(cat target/ct-tools/.rev 2>/dev/null)" != "$rev" ]; then
+        cargo install --locked --root target/ct-tools --git "$url" --rev "$rev" component-test-cli
+        printf '%s' "$rev" > target/ct-tools/.rev
+    fi
+    target/ct-tools/bin/component-test pins --cargo-lock Cargo.lock \
+        --js-lock conformance/driver-ct/jco/pnpm-lock.yaml \
+        --js-lock js/componentize/wpt/parity/pnpm-lock.yaml \
+        --expect "$rev" > /dev/null
 
 build-echod:
     cargo build --manifest-path {{root}}/Cargo.toml -p conformance-echod
