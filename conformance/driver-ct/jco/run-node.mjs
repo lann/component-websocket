@@ -5,12 +5,17 @@
 //
 // jco's async ABI needs JSPI: Node 24+ with --experimental-wasm-jspi
 // (the package's `run:node` script supplies it).
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { cli, clocks, io } from "@bytecodealliance/preview2-shim";
+
+import {
+  loadCoreModules,
+  writeResultsFile,
+} from "@polymorph/component-test-js/node-runner";
 
 import { bindImports, runSuite } from "./harness.mjs";
 import { requireNode24, spawnEchod, unreachableUrl } from "../../server/echod.mjs";
@@ -45,20 +50,6 @@ const { values } = parseArgs({
     },
   },
 });
-
-async function loadCoreModules(generatedDir) {
-  const modules = new Map();
-  const coreBytes = [];
-  for (const name of await readdir(generatedDir)) {
-    if (name.endsWith(".wasm")) {
-      const bytes = new Uint8Array(await readFile(join(generatedDir, name)));
-      coreBytes.push(bytes);
-      modules.set(name, await WebAssembly.compile(bytes));
-    }
-  }
-  return { modules, coreBytes };
-}
-
 
 async function main() {
   const generatedDir = values.generated;
@@ -103,9 +94,11 @@ async function main() {
     if (owned) await owned.shutdown();
   }
 
-  await mkdir(values.out, { recursive: true });
-  const outPath = join(values.out, `${values.target}.jsonl`);
-  await writeFile(outPath, `${lines.join("\n")}\n`);
+  const outPath = await writeResultsFile({
+    dir: values.out,
+    target: values.target,
+    lines,
+  });
   process.stderr.write(
     `wrote ${outPath} (${summary.total} cases, ${summary.failed} failed)\n`,
   );

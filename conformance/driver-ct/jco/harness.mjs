@@ -18,8 +18,7 @@
 // per-endpoint handshake serialization (the incumbent driver's
 // HANDSHAKE_BLOCKING workaround) entirely.
 
-import { envelope, inventoryLookup, runCases } from "@polymorph/component-test-js/harness";
-import { Context } from "@polymorph/component-test-js/context";
+import { inventoryLookup, runSuiteJsonl } from "@polymorph/component-test-js/harness";
 import {
   bindImports as bindCoreImports,
   envInterface,
@@ -49,31 +48,25 @@ export function bindImports({ connections, env, cli, clocks, io }) {
 export { envInterface };
 
 /**
- * Run the whole suite through the upstream case loop. `newInstance()`
- * must return a fresh instantiated suite (exports object) — census and
- * every case each get their own; `coreBytes` are the transpiled core
- * wasm bytes carrying the tag inventory; `emit(line)` receives each
- * JSONL line. Returns `{ total, failed }`.
+ * Run the whole suite through the upstream case loop
+ * (`runSuiteJsonl`). `newInstance()` must return a fresh instantiated
+ * suite (exports object) — census and every case each get their own;
+ * `coreBytes` are the transpiled core wasm bytes carrying the tag
+ * inventory; `emit(line)` receives each JSONL line. Returns
+ * `{ total, failed }`.
  */
 export async function runSuite({ newInstance, coreBytes, target, suiteName, emit, log }) {
-  emit(JSON.stringify(envelope(target, suiteName)));
-  const tagsOf = inventoryLookup(coreBytes);
-  const census = await (await newInstance()).tests.all();
-  const counts = await runCases({
-    cases: census,
-    Context,
-    tagsOf,
-    missing: [],
-    emit: (event) => {
-      emit(JSON.stringify(event));
-      log?.(`${event.case} … ${event.status}`);
-    },
+  const counts = await runSuiteJsonl({
+    // The suites export the bare `tests` spelling; this module also
+    // runs in the browser page, where the node-runner helpers cannot
+    // load.
+    newTests: async () => (await newInstance()).tests,
+    tagsOf: inventoryLookup(coreBytes),
+    target,
+    suiteName,
+    emit,
+    log,
     caseTimeoutMs: CASE_TIMEOUT_MS,
-    freshCases: async () => (await newInstance()).tests.all(),
   });
-  if (counts.total === 0) {
-    throw new Error("suite enumerated zero cases (empty selection is a run error)");
-  }
-  emit(JSON.stringify({ "segment-end": true }));
   return { total: counts.total, failed: counts.failed };
 }
