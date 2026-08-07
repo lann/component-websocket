@@ -58,8 +58,8 @@ check-js:
     node --check conformance/driver-ct/jco/harness.mjs
     node --check conformance/driver-ct/jco/run-node.mjs
     node --check conformance/driver-ct/jco/run-browser.mjs
+    node --check conformance/driver-ct/jco/browser-imports.mjs
     node --check conformance/server/echod.mjs
-    node --check scripts/chrome.mjs
     node --check examples/jco-demo/run.mjs
     @echo "js: ok"
 
